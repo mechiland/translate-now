@@ -137,7 +137,24 @@ Releases are automated with [release-please](https://github.com/googleapis/relea
 
 Secrets, credential dry runs and per-store retries are covered in the [publishing guide](docs/PUBLISHING.md).
 
-Tech stack: [WXT](https://wxt.dev), TypeScript, React (popup and settings only), Vitest, Playwright. Design decisions are in [docs/DECISIONS.md](docs/DECISIONS.md).
+### Project layout
+
+```
+src/
+  entrypoints/      background, content script, popup, options page (WXT entrypoints)
+  components/ui/    shadcn components from the radix-base registry (generated; add more with shadcn)
+  components/app/   app-level components composed from them
+  hooks/            React hooks
+  lib/              framework-free logic: DOM segmentation, providers, settings, translation, i18n
+  lib/theme/        radix-base design tokens (generated)
+  styles/           Tailwind entry for the popup and options page
+public/             icons and _locales, copied as-is
+tests/              unit (Vitest), e2e (Playwright), release script tests
+```
+
+Add UI components with `pnpm dlx shadcn@latest add @radix-base/<name>`, then replace lucide icons in the new file with HugeIcons.
+
+Tech stack: [WXT](https://wxt.dev), TypeScript, React with [shadcn/ui](https://ui.shadcn.com) components from the [radix-base](https://radix-shadcn.dev) registry (Radix Themes tokens on Base UI), Tailwind CSS v4 and [HugeIcons](https://hugeicons.com) for the popup and settings page, Vitest, Playwright. Design decisions are in [docs/DECISIONS.md](docs/DECISIONS.md).
 
 ## License
 
