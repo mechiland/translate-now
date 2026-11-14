@@ -1,7 +1,7 @@
 name: Release Please
 
 # Keeps a release PR up to date from Conventional Commits on main. Merging that PR
-# tags the version, creates the GitHub Release (Chinese notes) and submits to the stores.
+# tags the version, creates the GitHub Release and submits to the stores.
 
 on:
   push:

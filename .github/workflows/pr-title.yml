@@ -1,7 +1,7 @@
 name: PR title
 
 # Squash merges use the PR title as the commit message, and release-please builds the
-# version bump and Chinese release notes from it.
+# version bump and the release notes from it. Titles are written in English.
 
 on:
   pull_request:
@@ -21,6 +21,6 @@ jobs:
         run: |
           pattern='^(feat|fix|perf|revert|deps|docs|style|refactor|test|build|ci|chore)(\([a-z0-9._/-]+\))?!?: .+'
           if ! printf '%s' "$TITLE" | grep -Eq "$pattern"; then
-            echo "::error::PR title must follow Conventional Commits, e.g. 'feat: 悬停段落翻译' or 'fix(selection): 修复卡片定位'. See docs/PUBLISHING.md."
+            echo "::error::PR title must follow Conventional Commits, e.g. 'feat: translate a paragraph on hover' or 'fix(selection): keep the card on screen'. See docs/PUBLISHING.md."
             exit 1
           fi
