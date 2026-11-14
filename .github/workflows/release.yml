@@ -150,6 +150,12 @@ jobs:
           ARGS=()
           if [ "$DRY_RUN" = "true" ]; then ARGS+=(--dry-run); fi
           pnpm submit:chrome "${ARGS[@]}"
+      - name: Explain a Chrome submission blocked by a review
+        if: ${{ failure() && matrix.store == 'chrome' }}
+        env:
+          TAG: ${{ needs.build.outputs.tag }}
+        run: |
+          echo "::error title=Chrome submission failed::If the log says 'You may not edit or publish an item that is in review', an earlier version is still in Chrome review. Pending reviews of an already published item are cancelled automatically, but the item's first review is not reported by the API. Retry when that review finishes: Actions → Release → Run workflow with tag $TAG, store chrome, dry_run off. See docs/PUBLISHING.md."
       - name: Submit Firefox and sources for public listing
         if: ${{ matrix.store == 'firefox' }}
         env:
