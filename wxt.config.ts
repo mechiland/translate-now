@@ -6,13 +6,29 @@ export default defineConfig({
   // Explicit imports everywhere (no auto-imports) keeps lint/tsc/vitest simple.
   imports: false,
   zip: {
-    // Sources zip (for Firefox AMO review) — keep test artifacts out.
-    excludeSources: ['tests/e2e/screenshots/**', 'test-results/**', 'playwright-report/**', '.github/**'],
+    // Only reproducible build inputs are sent to AMO; local credentials stay out.
+    includeSources: [
+      'entrypoints/**',
+      'lib/**',
+      'assets/**',
+      'public/**',
+      'scripts/gen-icons.mjs',
+      'package.json',
+      'pnpm-lock.yaml',
+      'wxt.config.ts',
+      'tsconfig.json',
+      'README.md',
+      'docs/AMO_REVIEW.md',
+      'PRIVACY.md',
+      'LICENSE',
+    ],
+    excludeSources: ['**/.env*', '**/*.pem', '**/*.key'],
   },
   manifest: ({ browser }) => ({
     name: '__MSG_extName__',
     description: '__MSG_extDescription__',
     default_locale: 'en',
+    homepage_url: 'https://github.com/mechiland/translate-now',
     permissions: ['storage', 'contextMenus', 'activeTab'],
     host_permissions: ['<all_urls>'],
     action: {
@@ -33,8 +49,10 @@ export default defineConfig({
           browser_specific_settings: {
             gecko: {
               id: 'translate-now@mechiland.github.io',
-              strict_min_version: '115.0',
-              data_collection_permissions: { required: ['none'] },
+              strict_min_version: '140.0',
+              data_collection_permissions: {
+                required: ['websiteContent', 'browsingActivity', 'authenticationInfo'],
+              },
             },
           },
         }

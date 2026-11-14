@@ -1,6 +1,6 @@
 {
   "name": "translate-now",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "Bring-your-own-key bilingual web page translator powered by LLMs",
   "type": "module",
@@ -14,11 +14,15 @@
     "zip:all": "wxt zip && wxt zip -b firefox && wxt zip -b edge",
     "compile": "tsc --noEmit",
     "lint": "eslint .",
+    "lint:firefox": "web-ext lint --source-dir .output/firefox-mv2",
     "format": "prettier --write .",
-    "test": "vitest run",
+    "test": "vitest run && node --test tests/release/*.test.mjs",
     "test:watch": "vitest",
     "test:e2e": "wxt build && playwright test",
     "icons": "node scripts/gen-icons.mjs",
+    "release:check": "node scripts/release.mjs check",
+    "submit:chrome": "node scripts/release.mjs submit chrome",
+    "submit:firefox": "node scripts/release.mjs submit firefox",
     "postinstall": "wxt prepare"
   },
   "dependencies": {
@@ -41,6 +45,7 @@
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.72.2",
     "vitest": "^5.1.0",
+    "web-ext": "10.8.0",
     "wxt": "^0.21.5"
   },
   "packageManager": "pnpm@12.16.1",

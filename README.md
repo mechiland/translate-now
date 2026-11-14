@@ -96,7 +96,7 @@ A free, open-source, bring-your-own-key bilingual web page translator for Chrome
 
 ## 开发
 
-需要 Node.js 20+ 和 pnpm。
+需要 Node.js 22+ 和 pnpm 12.16.1。
 
 ```bash
 pnpm install
@@ -114,7 +114,7 @@ REAL_SITES=1 pnpm exec playwright test realsites   # 在真实网站上冒烟测
 
 首次运行 E2E 前执行 `pnpm exec playwright install chromium`。
 
-发布：修改 `package.json` 的版本号，提交并推送 `v<版本>` 标签，GitHub Actions 会自动构建、测试并上传到 Releases。
+发布：修改 `package.json` 的版本号，提交并推送 `v<版本>` 标签，GitHub Actions 会自动测试、打包、上传 GitHub Releases，并分别提交 Chrome Web Store 和 Firefox AMO 审核，审核通过后自动发布。首次条目创建、所需 Secrets、dry-run 和单商店重试见 [发布指南](docs/PUBLISHING.md)。完整隐私说明见 [PRIVACY.md](PRIVACY.md)。Firefox 商店版本要求 140+。
 
 技术栈：[WXT](https://wxt.dev)、TypeScript、React（仅 popup 与设置页）、Vitest、Playwright。设计决策见 [docs/DECISIONS.md](docs/DECISIONS.md)。
 
