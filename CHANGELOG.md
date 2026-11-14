@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/mechiland/translate-now/compare/v0.2.0...v0.3.0) (2026-11-14)
+
+
+### Features
+
+* rebuild the popup and options page with shadcn ([#6](https://github.com/mechiland/translate-now/issues/6)) ([fcf7304](https://github.com/mechiland/translate-now/commit/fcf7304a60f0a766e37f08de3ddf338d6f45f2a1))
+
 ## [0.2.0](https://github.com/mechiland/translate-now/releases/tag/v0.2.0) (2026-11-14)
 
 
