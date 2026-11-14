@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0](https://github.com/mechiland/translate-now/compare/v0.1.1...v0.2.0) (2026-11-14)
+
+
+### 新功能
+
+* 悬停时轻按 Ctrl 翻译单个段落 ([#3](https://github.com/mechiland/translate-now/issues/3)) ([9834509](https://github.com/mechiland/translate-now/commit/9834509020dda9dd683c3851c905eacca0f40861))
+
 ## 0.1.1 - 2026-11-14
 
 - 新增：推送版本标签后自动提交 Chrome Web Store（API v2）和 Firefox AMO，支持单商店重试和凭据 dry-run。
