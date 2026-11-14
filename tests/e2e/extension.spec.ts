@@ -200,6 +200,66 @@ test('tapping Ctrl over a paragraph translates only that paragraph; tapping agai
   expect(server.requests).toHaveLength(1);
 });
 
+test('translates headline buttons, role=button/tooltip widgets and expanded content, not hidden text', async ({
+  context,
+  sw,
+  server,
+}) => {
+  await configure(sw, baseSettings(server));
+  const page = await context.newPage();
+  await page.setViewportSize({ width: 1000, height: 800 });
+  await page.goto(`${server.url}/widgets.html`);
+  await expect
+    .poll(() => sendToPage(sw, page.url(), { type: 'page:state' }).catch(() => null))
+    .toBeTruthy();
+  await sendToPage(sw, page.url(), { type: 'page:toggle' });
+
+  // Kagi-style headline: the title span is a flex item (blockified), so its translation
+  // renders inside it, below the title.
+  const headlineTr = page.locator('#headline tn-translation.tn-done');
+  await expect(headlineTr).toHaveText(
+    '[ZH] Airspace reopens after a communications failure halts all departures',
+  );
+  const titleBox = (await page.locator('#headline > span').evaluate((el) => {
+    const r = el.firstChild!.ownerDocument!.createRange();
+    r.selectNodeContents(el.firstChild!);
+    const b = r.getBoundingClientRect();
+    return { y: b.y, height: b.height };
+  }))!;
+  expect((await headlineTr.boundingBox())!.y).toBeGreaterThanOrEqual(
+    titleBox.y + titleBox.height - 1,
+  );
+  // Text directly inside a flex button: the translation goes right after the button, below it.
+  const moreTr = page.locator('#more + tn-translation.tn-done');
+  await expect(moreTr).toHaveText(
+    '[ZH] See how airlines rebuilt their schedules after the ground stop',
+  );
+  const moreBox = (await page.locator('#more').boundingBox())!;
+  expect((await moreTr.boundingBox())!.y).toBeGreaterThanOrEqual(moreBox.y + moreBox.height - 1);
+
+  // TalentLMS-style sidebar: role=button items and role=tooltip wrappers.
+  await expect(page.locator('#unit-1 tn-translation.tn-done')).toHaveText(
+    '[ZH] Meet the Instructors',
+  );
+  await expect(page.locator('#chapter tn-translation.tn-done')).toHaveText(
+    '[ZH] Chapter 1: About this Course',
+  );
+  // The duplicated, visually hidden <dt> and form values are left alone.
+  await expect(page.locator('dt tn-translation')).toHaveCount(0);
+  await expect(page.locator('form tn-translation')).toHaveCount(0);
+
+  // The headline still works as a button; the content it reveals gets translated.
+  await page.locator('#headline').click();
+  await expect(page.locator('#summary tn-translation.tn-done')).toContainText(
+    '[ZH] Flights resumed in the evening after a nationwide ground stop.',
+  );
+  const sent = server.requests.map((r) => r.user).join('\n');
+  expect(sent).not.toContain('Citation 1');
+  expect(sent).not.toContain('Typed value');
+  expect(sent.match(/Meet the Instructors/g)).toHaveLength(1);
+  await shot(page, '07-widgets');
+});
+
 test('selection translation via context-menu message', async ({ context, sw, server }) => {
   await configure(sw, baseSettings(server));
   const page = await openFixture(context, server);

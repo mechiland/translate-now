@@ -148,6 +148,9 @@ describe('text helpers', () => {
     expect(isTranslatableText('42%')).toBe(false);
     expect(isTranslatableText('https://example.com/path')).toBe(false);
     expect(isTranslatableText('me@example.com')).toBe(false);
+    expect(isTranslatableText('theglobeandmail.com')).toBe(false);
+    expect(isTranslatableText('news.bbc.co.uk')).toBe(false);
+    expect(isTranslatableText('U.S. officials')).toBe(true);
     expect(isTranslatableText('—')).toBe(false);
   });
 });
@@ -161,6 +164,75 @@ describe('UI chrome', () => {
       <div role="toolbar">Bold italic</div>
       <p>Main content here</p>`);
     expect(s.map((x) => x.text)).toEqual(['Main content here']);
+  });
+});
+
+describe('buttons and widget roles', () => {
+  /** Inline styles drive display, flex-direction and visibility, like computed styles would. */
+  function styled(html: string) {
+    document.body.innerHTML = html;
+    return collectSegments(document.body, {
+      getStyle: (el) => {
+        const st = (el as HTMLElement).style;
+        return {
+          display: st?.display || getDisplay(el),
+          flexDirection: st?.flexDirection || undefined,
+          hidden:
+            st?.visibility === 'hidden' ||
+            (st?.position === 'absolute' && parseFloat(st.width) <= 1),
+        };
+      },
+    });
+  }
+
+  it('translates text in buttons and role=button, but not form controls', () => {
+    const s = styled(`
+      <dl><dd role="button" tabindex="0"><div role="tooltip"><span>Meet the Instructors</span></div></dd></dl>
+      <div><button>Back to course</button></div>
+      <input value="typed value here"><select><option>Option text</option></select>`);
+    expect(s.map((x) => x.text)).toEqual(['Meet the Instructors', 'Back to course']);
+    expect(s.every((x) => x.placement === 'inside')).toBe(true);
+  });
+
+  it('places a long translation after a flex-row block whose parent stacks vertically', () => {
+    const s = styled(`
+      <div><button style="display:flex" aria-label="Expand story"><span>FAA reopens US airspace after communications failure halts departures nationwide</span></button></div>`);
+    expect(s).toHaveLength(1);
+    expect(s[0]!.block.localName).toBe('button');
+    expect(s[0]!.placement).toBe('after');
+    expect(s[0]!.fullBlock).toBe(false);
+  });
+
+  it('keeps translations inside row blocks when short, column-flex, or inside a row parent', () => {
+    const s = styled(`
+      <div><button style="display:flex"><span>Read more</span></button></div>
+      <div><div style="display:flex;flex-direction:column"><span>A long column of text that is certainly not a short label</span></div></div>
+      <div style="display:flex"><div style="display:flex"><span>Another long sentence that sits inside a row of cards</span></div></div>`);
+    expect(s.map((x) => x.placement)).toEqual(['inside', 'inside', 'inside']);
+  });
+
+  it('keeps inline-flex citation buttons inside the sentence', () => {
+    const s = styled(`
+      <p>Air traffic control was disrupted <button style="display:inline-flex"><span style="display:block">[1]</span></button> and flights stopped.</p>`);
+    expect(s.map((x) => x.text)).toEqual([
+      'Air traffic control was disrupted [1] and flights stopped.',
+    ]);
+  });
+
+  it('drops sr-only citation labels without splitting the sentence', () => {
+    const s = styled(`
+      <p>Air traffic control was disrupted <button><span style="display:block;position:absolute;width:1px">Citation 1 from reuters.com</span><span>[1]</span></button>. The ground stop began.</p>`);
+    expect(s.map((x) => x.text)).toEqual([
+      'Air traffic control was disrupted [1]. The ground stop began.',
+    ]);
+  });
+
+  it('skips visually hidden (sr-only and visibility:hidden) text', () => {
+    const s = styled(`
+      <p>The ground stop began at 3:54 p.m.<button><span style="position:absolute;width:1px">Citation 3 from aljazeera.com</span>3</button></p>
+      <dt style="position:absolute;width:1px">Duplicate hidden title</dt>
+      <p style="visibility:hidden">Invisible paragraph text</p>`);
+    expect(s.map((x) => x.text)).toEqual(['The ground stop began at 3:54 p.m.3']);
   });
 });
 

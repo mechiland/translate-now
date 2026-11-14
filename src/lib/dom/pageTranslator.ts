@@ -253,6 +253,7 @@ export class PageTranslator {
         existing.nodes = seg.nodes;
         existing.textNodes = seg.textNodes;
         existing.fullBlock = seg.fullBlock;
+        existing.placement = seg.placement;
         seen.add(existing);
         continue;
       }
@@ -421,11 +422,13 @@ export class PageTranslator {
   }
 
   private ensureEl(unit: Unit): HTMLElement | undefined {
-    const anchor = unit.nodes[unit.nodes.length - 1];
-    if (!anchor || anchor.parentNode !== unit.block) return undefined;
+    // Inside the block right after the run, or right after the block itself (row layouts).
+    const anchor = unit.placement === 'after' ? unit.block : unit.nodes[unit.nodes.length - 1];
+    const parent = unit.placement === 'after' ? unit.block.parentNode : unit.block;
+    if (!anchor || !parent || anchor.parentNode !== parent) return undefined;
     if (!unit.el) unit.el = this.doc.createElement(TRANSLATION_TAG);
-    if (unit.el.previousSibling !== anchor || unit.el.parentNode !== unit.block) {
-      unit.block.insertBefore(unit.el, anchor.nextSibling);
+    if (unit.el.previousSibling !== anchor || unit.el.parentNode !== parent) {
+      parent.insertBefore(unit.el, anchor.nextSibling);
     }
     unit.el.className = '';
     unit.el.removeAttribute('title');
