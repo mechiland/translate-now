@@ -2,12 +2,12 @@
 
 ## Reproduce the build
 
-Use Linux (Ubuntu 24.04 is suitable), Node.js 22, and pnpm **12.16.1**. All build tools are open source; no API key, account, environment file, or external build service is required. Internet access is only required to download dependencies from npm.
+Use Linux (Ubuntu 24.04 is suitable), Node.js 26, and pnpm **12.18.0**. All build tools are open source; no API key, account, environment file, or external build service is required. Internet access is only required to download dependencies from npm.
 
 From the root of the extracted sources:
 
 ```sh
-npm install --global pnpm@12.16.1
+npm install --global pnpm@12.18.0
 pnpm install --frozen-lockfile
 pnpm build:firefox
 ```

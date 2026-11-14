@@ -28,7 +28,16 @@ export function submissionOptions(store, version, env, dryRun) {
       'CHROME_SERVICE_ACCOUNT_CLIENT_EMAIL',
       'CHROME_SERVICE_ACCOUNT_PRIVATE_KEY',
     ];
-    args = ['--chrome-api-version', 'v2', '--chrome-zip', `${prefix}-chrome.zip`];
+    // A newer release supersedes a version still waiting for review; Chrome rejects
+    // uploads while a review is pending, so cancel it and submit the new version.
+    args = [
+      '--chrome-api-version',
+      'v2',
+      '--chrome-zip',
+      `${prefix}-chrome.zip`,
+      '--chrome-cancel-pending',
+      'true',
+    ];
   } else if (store === 'firefox') {
     required = ['FIREFOX_JWT_ISSUER', 'FIREFOX_JWT_SECRET'];
     args = [

@@ -19,7 +19,7 @@ const chromeEnv = {
 };
 const firefoxEnv = { FIREFOX_JWT_ISSUER: 'issuer', FIREFOX_JWT_SECRET: 'private-value-never-log' };
 
-test('Chrome uses API v2 and an exact versioned artifact', () => {
+test('Chrome uses API v2, an exact versioned artifact, and supersedes a pending review', () => {
   const result = submissionOptions('chrome', '0.1.1', chromeEnv, false);
   assert.deepEqual(result.args, [
     'exec',
@@ -29,6 +29,8 @@ test('Chrome uses API v2 and an exact versioned artifact', () => {
     'v2',
     '--chrome-zip',
     '.output/translate-now-0.1.1-chrome.zip',
+    '--chrome-cancel-pending',
+    'true',
   ]);
   assert.equal(
     JSON.stringify(result.args).includes(chromeEnv.CHROME_SERVICE_ACCOUNT_PRIVATE_KEY),

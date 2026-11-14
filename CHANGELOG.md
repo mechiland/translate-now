@@ -2,10 +2,10 @@
 
 ## 0.1.1 - 2026-11-14
 
-- Add automated Chrome Web Store API v2 and Firefox AMO submissions on version tags, with independent retries and credential dry runs.
-- Declare Firefox data transmission accurately and require Firefox 140+ for built-in consent.
-- Add privacy policy, store descriptions, reproducible AMO build instructions, and restricted source packaging.
+- 新增：推送版本标签后自动提交 Chrome Web Store（API v2）和 Firefox AMO，支持单商店重试和凭据 dry-run。
+- Firefox 准确声明数据传输类型，最低版本要求提升到 140 以使用内置的数据传输许可。
+- 新增隐私政策、商店描述、可复现的 AMO 构建说明，以及白名单式源码打包。
 
 ## 0.1.0 - 2026-11-14
 
-- Initial release: bring-your-own-key bilingual page translation, selection translation, multiple providers, translation styles, glossaries, and site rules.
+- 首个版本：自带 API Key 的网页双语翻译、划词翻译、多服务商支持、翻译风格、术语表和站点规则。

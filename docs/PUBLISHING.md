@@ -1,79 +1,99 @@
-# 发布到 Chrome Web Store 和 Firefox AMO
+# Publishing to the Chrome Web Store and Firefox AMO
 
-## 当前条目
+## Store items
 
-- Chrome item ID：`hkahabmfamcffhaficngecicoagnaknj`；[审核后台](https://chrome.google.com/webstore/devconsole/21607d6d-86f2-4d36-a859-5f022274fe6f/hkahabmfamcffhaficngecicoagnaknj/edit/status)。
-- Firefox manifest ID：`translate-now@mechiland.github.io`；[审核后台](https://addons.mozilla.org/en-US/developers/addon/translate-now-ai/versions)；公开地址 `/firefox/addon/translate-now-ai/`。
-- 首次提交版本：`0.1.1`。下一次更新请用更高版本（例如 `0.1.2`），避免重复提交正在审核的版本。
-- Chrome 发布项目：`translate-now-releases`；服务账号：`translate-now-publisher@translate-now-releases.iam.gserviceaccount.com`。服务账号只用于商店 API，不授予 Cloud 项目角色。
-- 可复用的展示截图保存在 `store/screenshots/`，使用本地演示文章与示例凭据截取。
+- Chrome item ID: `hkahabmfamcffhaficngecicoagnaknj`; [developer dashboard](https://chrome.google.com/webstore/devconsole/21607d6d-86f2-4d36-a859-5f022274fe6f/hkahabmfamcffhaficngecicoagnaknj/edit/status).
+- Firefox manifest ID: `translate-now@mechiland.github.io`; [developer dashboard](https://addons.mozilla.org/en-US/developers/addon/translate-now-ai/versions); public page `/firefox/addon/translate-now-ai/`.
+- First store submission: `0.1.1` (submitted manually). Every later version must be higher than anything already submitted.
+- Chrome publishing project: `translate-now-releases`; service account: `translate-now-publisher@translate-now-releases.iam.gserviceaccount.com`. The service account is only used for the store API and has no Cloud project roles.
+- Reusable listing screenshots live in `store/screenshots/` (taken with a local demo article and sample credentials). Listing copy is in `store/LISTING.md`.
 
-## 首次上架
+## How a release happens
 
-首次商店条目需要在开发者后台创建；自动更新不能代替条目、截图、隐私声明及账号设置。
+```
+PR (Conventional Commits title) ──squash──▶ main
+                                             │
+                     release-please.yml ◀────┘  updates the release PR
+                                             │  (version bump + Chinese CHANGELOG)
+          merge the release PR ──────────────┘
+                     │
+                     ├─ release-please tags vX.Y.Z and creates the GitHub Release (Chinese notes)
+                     └─ release.yml (called directly):
+                          build → compile, lint, unit + release tests, Chromium E2E,
+                                  zip, web-ext lint
+                          github-release → attach chrome/firefox/sources ZIPs
+                          submit (chrome) → Chrome Web Store API v2, cancel pending review, submit
+                          submit (firefox) → AMO listed channel with sources
+```
+
+1. **Write a Conventional Commits PR title.** PRs are squash-merged and the PR title becomes the commit message on `main`; the `PR title` workflow enforces the format. The description of user-facing changes must be in Chinese because it is copied into the release notes:
+   - `feat: 悬停段落翻译` → minor bump, listed under 新功能
+   - `fix(selection): 修复卡片超出屏幕` → patch bump, listed under 问题修复
+   - `perf: …` → 性能优化, `revert: …` → 回滚, `deps: …` → 依赖更新
+   - `docs`, `refactor`, `test`, `build`, `ci`, `chore`, `style` → no release on their own and hidden from the notes
+   - `feat!: …` or a `BREAKING CHANGE:` footer → breaking change (a minor bump while the version is below 1.0)
+2. **Review the release PR.** After each merge, release-please opens or updates `chore: 发布 X.Y.Z`. It bumps `package.json` and `.release-please-manifest.json` and prepends the Chinese section to `CHANGELOG.md`. Edit the PR if the notes need polishing.
+3. **Merge the release PR** when you want to ship. Everything after that is automatic. CI passing does not mean the stores approved the version; Chrome and Firefox reviews usually take from hours to a few days. Approved versions are published automatically.
+
+Notes:
+
+- PRs and tags created by release-please use `GITHUB_TOKEN`, so they do not trigger other workflows: the release PR has no CI run of its own, and the store release is called from `release-please.yml` instead of a tag-push trigger. `release.yml` runs the full test suite again on the tagged commit before packaging.
+- The repository must allow GitHub Actions to create pull requests (Settings → Actions → General → Workflow permissions), and squash merges must use the PR title.
+- If the Chrome item still has a version in review, the new upload cancels that review and submits the new version instead (`--chrome-cancel-pending`), because Chrome does not accept uploads while a review is pending. AMO queues versions without that restriction.
+- To force a specific version, add a `Release-As: 1.0.0` footer to a commit on `main`.
+
+## First listing
+
+The store items must be created in the developer dashboards first; automated updates cannot replace the item, screenshots, privacy declarations or account settings.
 
 ```sh
 pnpm install --frozen-lockfile
-pnpm compile
-pnpm lint
-pnpm test
-pnpm zip
-pnpm zip:firefox
+pnpm compile && pnpm lint && pnpm test
+pnpm zip && pnpm zip:firefox
 pnpm lint:firefox
 ```
 
-- Chrome：[开发者后台](https://chrome.google.com/webstore/devconsole)。上传 `.output/translate-now-0.1.1-chrome.zip`，按 `store/LISTING.md` 填写条目，添加截图与图标，完成隐私声明及分发设置，然后提交审核。后续版本替换文件名中的版本号。
-- Firefox：[开发者后台](https://addons.mozilla.org/developers/)。选择公开分发并上传 `.output/translate-now-0.1.1-firefox.zip`，同时上传 `.output/translate-now-0.1.1-sources.zip`；构建说明位于源码包的 `docs/AMO_REVIEW.md`。保留 manifest 中的固定 ID。
-- 隐私政策公开链接：`https://github.com/mechiland/translate-now/blob/main/PRIVACY.md`。商店申报应说明：网页文本、标题、域名发送到用户配置的翻译服务，用户的 API Key 用于该服务的认证，无开发者服务器或遥测。
+- Chrome: [developer dashboard](https://chrome.google.com/webstore/devconsole). Upload `.output/translate-now-<version>-chrome.zip`, fill in the listing from `store/LISTING.md`, add screenshots and icons, complete the privacy practices and distribution settings, then submit for review.
+- Firefox: [developer hub](https://addons.mozilla.org/developers/). Choose public distribution and upload `.output/translate-now-<version>-firefox.zip` together with `.output/translate-now-<version>-sources.zip`; build instructions for reviewers are in `docs/AMO_REVIEW.md` inside the sources ZIP. Keep the fixed manifest ID.
+- Public privacy policy: `https://github.com/mechiland/translate-now/blob/main/PRIVACY.md`. Store declarations: page text, title and domain go to the translation provider the user configures, the user's API key authenticates those requests, and there is no developer server or telemetry.
 
-## 一次性配置 GitHub Actions Secrets
+## GitHub Actions secrets (one-time)
 
-到 [仓库 Secrets](https://github.com/mechiland/translate-now/settings/secrets/actions) 添加以下项。不要把密钥写进代码或聊天。
+Add these under [repository secrets](https://github.com/mechiland/translate-now/settings/secrets/actions). Never commit secrets or paste them into chats.
 
-| Secret | 来源 |
-| --- | --- |
-| `CHROME_EXTENSION_ID` | 创建条目后获得的 32 位商店 ID，不是本地开发安装 ID |
-| `CHROME_PUBLISHER_ID` | Chrome 开发者后台中的发布者 ID |
-| `CHROME_SERVICE_ACCOUNT_CLIENT_EMAIL` | Google Cloud 服务账号 JSON 中的 `client_email` |
-| `CHROME_SERVICE_ACCOUNT_PRIVATE_KEY` | 同一 JSON 中的 `private_key`，保留实际换行 |
-| `FIREFOX_JWT_ISSUER` | [AMO API credentials](https://addons.mozilla.org/developers/addon/api/key/) 的 JWT issuer |
-| `FIREFOX_JWT_SECRET` | 同页的 JWT secret |
+| Secret                                | Source                                                                                      |
+| ------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `CHROME_EXTENSION_ID`                 | The 32-letter store item ID (not a local unpacked ID)                                       |
+| `CHROME_PUBLISHER_ID`                 | Publisher ID from the Chrome developer dashboard                                            |
+| `CHROME_SERVICE_ACCOUNT_CLIENT_EMAIL` | `client_email` from the Google Cloud service account JSON                                   |
+| `CHROME_SERVICE_ACCOUNT_PRIVATE_KEY`  | `private_key` from the same JSON, with real line breaks                                     |
+| `FIREFOX_JWT_ISSUER`                  | JWT issuer from [AMO API credentials](https://addons.mozilla.org/developers/addon/api/key/) |
+| `FIREFOX_JWT_SECRET`                  | JWT secret from the same page                                                               |
 
-Chrome 使用 **Web Store API v2**。按 [Google 官方说明](https://developer.chrome.com/docs/webstore/service-accounts) 启用 API、创建服务账号，并在 Chrome 开发者后台 Account 中关联该服务账号邮箱。该账号不需要额外的 Google Cloud 项目角色。Firefox 使用 manifest ID `translate-now@mechiland.github.io`，发布到 `listed` 公开频道。
+Chrome uses **Web Store API v2**. Follow [Google's guide](https://developer.chrome.com/docs/webstore/service-accounts) to enable the API, create a service account, and link its email under Account in the Chrome developer dashboard. The service account needs no additional Google Cloud roles. Firefox uses manifest ID `translate-now@mechiland.github.io` and the `listed` (public) channel.
 
-本机如需验证，可以运行 `pnpm exec wxt submit init` 配置本地 `.env.submit`，它已被 Git 忽略。CI 只使用 GitHub Secrets。源码包采用文件白名单，排除本地配置和凭据。
+For local checks, `pnpm exec wxt submit init` writes a local `.env.submit`, which Git ignores. CI only uses GitHub secrets. The sources ZIP is built from an allowlist that excludes local configuration and credentials.
 
-## 每次自动发布
+## Credential dry runs and retries
 
-1. 更新 `package.json` 的版本号，补充 `CHANGELOG.md`，提交并推送代码。
-2. 创建并推送同版本标签，例如：
+Actions → Release → Run workflow, then choose `both`, `chrome` or `firefox`:
 
-   ```sh
-   git tag -a v0.1.2 -m 'Release v0.1.2'
-   git push origin main
-   git push origin v0.1.2
-   ```
+- `dry_run: true` (default) only authenticates against the stores. Nothing is uploaded and no GitHub Release is touched. The tag can be left empty to check the selected branch.
+- To retry a failed store, enter the **existing** version tag, pick that store, and turn off `dry_run`. Packages are always built from the tag, never from `main`.
 
-3. [Release 工作流](https://github.com/mechiland/translate-now/actions/workflows/release.yml) 校验标签与版本一致，运行类型检查、ESLint、单元测试、发布逻辑测试、Chromium E2E 和 Firefox 商店验证，构建三个 ZIP。通过后上传 GitHub Release，并分别提交两个商店审核；通过商店审核后自动公开。
+The two stores run independently; one failing never cancels the other. Retry only the store that failed so a version that already went through is not uploaded again. Submissions for the same tag and store are serialized.
 
-发布需要新版本号；不要为新代码复用已提交商店的版本。CI 提交成功不代表商店已审核通过。缺少凭据会明确报错，不会把跳过发布显示为成功。
-
-## 凭据验证与失败重试
-
-Actions → Release → Run workflow：选择 `both`、`chrome` 或 `firefox`。默认 `dry_run: true` 只检查认证，不上传商店、不创建 GitHub Release；此时可以不填标签，直接验证选中分支的配置。实际发布时必须填写**已存在的版本标签**并关闭 dry-run。
-
-两个商店独立执行，一个失败不会取消另一个。单个商店失败时，通过手动工作流只重试失败的商店，避免重新上传已经成功的版本。所有提交使用该标签构建的包，不会从 main 偷换版本。每个版本发布串行执行，防止同版本并发上传。
-
-本机检查（已配置凭据时）：
+Local check (with credentials configured):
 
 ```sh
 pnpm submit:chrome --dry-run
 pnpm submit:firefox --dry-run
 ```
 
-## 官方参考
+## References
 
-- [WXT 发布说明](https://wxt.dev/guide/essentials/publishing)
-- [Chrome 首次发布和 API 限制](https://developer.chrome.com/docs/webstore/api)
-- [Firefox 数据传输许可](https://extensionworkshop.com/documentation/develop/firefox-builtin-data-consent/)
-- [AMO 源码要求](https://extensionworkshop.com/documentation/publish/source-code-submission/)
+- [release-please](https://github.com/googleapis/release-please) and [release-please-action](https://github.com/googleapis/release-please-action)
+- [WXT publishing](https://wxt.dev/guide/essentials/publishing)
+- [Chrome Web Store API](https://developer.chrome.com/docs/webstore/api)
+- [Firefox built-in data consent](https://extensionworkshop.com/documentation/develop/firefox-builtin-data-consent/)
+- [AMO source code requirements](https://extensionworkshop.com/documentation/publish/source-code-submission/)

@@ -1,0 +1,29 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "bootstrap-sha": "af04993fa6fa789c6ed3879899fa9cb6a277366c",
+  "pull-request-title-pattern": "chore${scope}: 发布${component} ${version}",
+  "pull-request-header": "本 PR 由 release-please 自动维护，汇总自上次发布以来的变更。合并后会创建 GitHub Release，并自动把新版本提交到 Chrome Web Store 和 Firefox AMO 审核。",
+  "packages": {
+    ".": {
+      "release-type": "node",
+      "package-name": "translate-now",
+      "include-component-in-tag": false,
+      "bump-minor-pre-major": true,
+      "changelog-path": "CHANGELOG.md",
+      "changelog-sections": [
+        { "type": "feat", "section": "新功能" },
+        { "type": "fix", "section": "问题修复" },
+        { "type": "perf", "section": "性能优化" },
+        { "type": "revert", "section": "回滚" },
+        { "type": "deps", "section": "依赖更新" },
+        { "type": "docs", "section": "文档", "hidden": true },
+        { "type": "style", "section": "代码风格", "hidden": true },
+        { "type": "refactor", "section": "代码重构", "hidden": true },
+        { "type": "test", "section": "测试", "hidden": true },
+        { "type": "build", "section": "构建", "hidden": true },
+        { "type": "ci", "section": "持续集成", "hidden": true },
+        { "type": "chore", "section": "杂项", "hidden": true }
+      ]
+    }
+  }
+}

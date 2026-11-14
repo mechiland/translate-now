@@ -1,12 +1,22 @@
 name: Release
 
+# Builds, tests and packages a tagged version, attaches the ZIPs to its GitHub Release
+# and submits it to the Chrome Web Store and Firefox AMO.
+#
+# - Called by release-please.yml when a release PR is merged (the normal path).
+# - Run manually to dry-run credentials or to retry one store for an existing tag.
+
 on:
-  push:
-    tags: ['v*']
+  workflow_call:
+    inputs:
+      tag:
+        description: 'Version tag created by release-please, e.g. v0.2.0'
+        required: true
+        type: string
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Version tag; leave empty only to dry-run the selected branch'
+        description: 'Existing version tag; leave empty only to dry-run the selected branch'
         required: false
         type: string
       store:
@@ -22,10 +32,6 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: release-${{ inputs.tag || github.ref_name }}
-  cancel-in-progress: false
-
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -34,34 +40,39 @@ jobs:
       version: ${{ steps.version.outputs.version }}
       tag: ${{ steps.version.outputs.tag }}
       commit: ${{ steps.version.outputs.commit }}
+      stores: ${{ steps.version.outputs.stores }}
+      dry_run: ${{ steps.version.outputs.dry_run }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ inputs.tag || github.ref }}
           persist-credentials: false
+      - uses: pnpm/setup@v3
+        with:
+          cache: true
+          require-lockfile: true
       - name: Validate release tag and package version
         id: version
         env:
-          RELEASE_TAG: ${{ inputs.tag || (github.event_name == 'push' && github.ref_name) || '' }}
-          ALLOW_UNTAGGED_DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          DRY_RUN: ${{ inputs.dry_run == true }}
+          STORE: ${{ inputs.store || 'both' }}
         run: |
           if [ -z "$RELEASE_TAG" ]; then
-            if [ "$ALLOW_UNTAGGED_DRY_RUN" != "true" ]; then
+            if [ "$DRY_RUN" != "true" ]; then
               echo "::error::A version tag is required for actual publication."
               exit 1
             fi
             RELEASE_TAG="v$(node -p 'JSON.parse(require("node:fs").readFileSync("package.json", "utf8")).version')"
           fi
           VERSION=$(node scripts/release.mjs check "$RELEASE_TAG")
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
-          echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
+          {
+            echo "version=$VERSION"
+            echo "tag=$RELEASE_TAG"
+            echo "commit=$(git rev-parse HEAD)"
+            if [ "$STORE" = "both" ]; then echo 'stores=["chrome","firefox"]'; else echo "stores=[\"$STORE\"]"; fi
+            echo "dry_run=$DRY_RUN"
+          } >> "$GITHUB_OUTPUT"
       - run: pnpm compile
       - run: pnpm lint
       - run: pnpm test
@@ -69,7 +80,7 @@ jobs:
       - run: pnpm test:e2e
       - run: pnpm zip && pnpm zip:firefox
       - run: pnpm lint:firefox
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: store-packages-${{ steps.version.outputs.version }}
           path: |
@@ -81,21 +92,23 @@ jobs:
 
   github-release:
     needs: build
-    if: ${{ github.event_name == 'push' || !inputs.dry_run }}
+    if: ${{ needs.build.outputs.dry_run != 'true' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: store-packages-${{ needs.build.outputs.version }}
           path: .output
-      - name: Publish GitHub release packages
+      - name: Attach packages to the GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ needs.build.outputs.tag }}
         run: |
+          # release-please normally creates the release (with Chinese notes) before this runs.
           gh release view "$RELEASE_TAG" >/dev/null 2>&1 || gh release create "$RELEASE_TAG" --verify-tag --title "$RELEASE_TAG" --generate-notes
           gh release upload "$RELEASE_TAG" .output/*.zip --clobber
 
@@ -107,40 +120,42 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        store: [chrome, firefox]
+        store: ${{ fromJSON(needs.build.outputs.stores) }}
+    # Never upload the same version to the same store twice at once (e.g. a manual retry).
+    concurrency:
+      group: submit-${{ needs.build.outputs.tag }}-${{ matrix.store }}
+      cancel-in-progress: false
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ needs.build.outputs.commit }}
           persist-credentials: false
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: pnpm/setup@v3
         with:
-          node-version: 22
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - uses: actions/download-artifact@v4
+          cache: true
+          require-lockfile: true
+      - uses: actions/download-artifact@v8
         with:
           name: store-packages-${{ needs.build.outputs.version }}
           path: .output
       - name: Submit Chrome for review and automatic publication
-        if: matrix.store == 'chrome' && (github.event_name == 'push' || inputs.store == 'both' || inputs.store == 'chrome')
+        if: ${{ matrix.store == 'chrome' }}
         env:
           CHROME_EXTENSION_ID: ${{ secrets.CHROME_EXTENSION_ID }}
           CHROME_PUBLISHER_ID: ${{ secrets.CHROME_PUBLISHER_ID }}
           CHROME_SERVICE_ACCOUNT_CLIENT_EMAIL: ${{ secrets.CHROME_SERVICE_ACCOUNT_CLIENT_EMAIL }}
           CHROME_SERVICE_ACCOUNT_PRIVATE_KEY: ${{ secrets.CHROME_SERVICE_ACCOUNT_PRIVATE_KEY }}
-          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+          DRY_RUN: ${{ needs.build.outputs.dry_run }}
         run: |
           ARGS=()
           if [ "$DRY_RUN" = "true" ]; then ARGS+=(--dry-run); fi
           pnpm submit:chrome "${ARGS[@]}"
       - name: Submit Firefox and sources for public listing
-        if: matrix.store == 'firefox' && (github.event_name == 'push' || inputs.store == 'both' || inputs.store == 'firefox')
+        if: ${{ matrix.store == 'firefox' }}
         env:
           FIREFOX_JWT_ISSUER: ${{ secrets.FIREFOX_JWT_ISSUER }}
           FIREFOX_JWT_SECRET: ${{ secrets.FIREFOX_JWT_SECRET }}
-          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+          DRY_RUN: ${{ needs.build.outputs.dry_run }}
         run: |
           ARGS=()
           if [ "$DRY_RUN" = "true" ]; then ARGS+=(--dry-run); fi
