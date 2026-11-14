@@ -1,0 +1,10 @@
+{
+  "extName": { "message": "Translate Now" },
+  "extDescription": {
+    "message": "Bilingual web page & selection translation with your own LLM API key (OpenAI, OpenRouter, DeepSeek, Qwen, Gemini, Claude, Ollama)."
+  },
+  "cmdTogglePage": { "message": "Translate page / show original" },
+  "cmdTranslateSelection": { "message": "Translate selected text" },
+  "menuTogglePage": { "message": "Translate this page / show original" },
+  "menuTranslateSelection": { "message": "Translate \"%s\"" }
+}

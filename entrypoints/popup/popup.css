@@ -1,0 +1,93 @@
+body {
+  width: 340px;
+}
+.popup {
+  padding: 12px 14px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.top img {
+  width: 20px;
+  height: 20px;
+}
+.top h1 {
+  font-size: 15px;
+  margin: 0;
+  flex: 1;
+  font-weight: 600;
+}
+.icon-btn {
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  color: var(--muted);
+  padding: 4px;
+  border-radius: 6px;
+  display: flex;
+}
+.icon-btn:hover {
+  background: var(--bg-soft);
+  color: var(--fg);
+}
+.main-btn {
+  width: 100%;
+  padding: 9px 12px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.status {
+  font-size: 12px;
+  color: var(--muted);
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-height: 18px;
+}
+.rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.row > label,
+.row > span:first-child {
+  color: var(--muted);
+  font-size: 13px;
+  white-space: nowrap;
+}
+.row select {
+  max-width: 190px;
+  padding: 3px 6px;
+}
+.footer {
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+  font-size: 12px;
+  color: var(--muted);
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+.footer .svc {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.unavailable {
+  font-size: 13px;
+  color: var(--muted);
+  padding: 6px 0;
+}
