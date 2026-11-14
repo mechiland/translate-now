@@ -5,17 +5,26 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
         with:
-          node-version: 22
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
+          persist-credentials: false
+      # Installs pnpm (from package.json) and Node.js (from .node-version), then runs a frozen install.
+      - uses: pnpm/setup@v3
+        with:
+          cache: true
+          require-lockfile: true
       - run: pnpm compile
       - run: pnpm lint
       - run: pnpm test

@@ -1,3 +1,5 @@
 .output
 .wxt
 pnpm-lock.yaml
+CHANGELOG.md
+.release-please-manifest.json

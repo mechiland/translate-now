@@ -1,6 +1,6 @@
 {
   "version": {
     "license": "MIT",
-    "approval_notes": "Build instructions are in docs/AMO_REVIEW.md in the attached sources. Requires Node.js 22 and pnpm 12.16.1: pnpm install --frozen-lockfile && pnpm build:firefox. No developer credentials or remote build service are needed. This is a bring-your-own-key translator: page text, title and domain go directly to the provider configured by the user; the user's API key authenticates those requests. No developer backend, analytics or remote executable code. Firefox 140+ built-in data consent declares websiteContent, browsingActivity and authenticationInfo."
+    "approval_notes": "Build instructions are in docs/AMO_REVIEW.md in the attached sources. Requires Node.js 26 and pnpm 12.18.0: pnpm install --frozen-lockfile && pnpm build:firefox. No developer credentials or remote build service are needed. This is a bring-your-own-key translator: page text, title and domain go directly to the provider configured by the user; the user's API key authenticates those requests. No developer backend, analytics or remote executable code. Firefox 140+ built-in data consent declares websiteContent, browsingActivity and authenticationInfo."
   }
 }
