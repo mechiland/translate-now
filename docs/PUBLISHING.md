@@ -1,5 +1,13 @@
 # 发布到 Chrome Web Store 和 Firefox AMO
 
+## 当前条目
+
+- Chrome item ID：`hkahabmfamcffhaficngecicoagnaknj`；[审核后台](https://chrome.google.com/webstore/devconsole/21607d6d-86f2-4d36-a859-5f022274fe6f/hkahabmfamcffhaficngecicoagnaknj/edit/status)。
+- Firefox manifest ID：`translate-now@mechiland.github.io`；[审核后台](https://addons.mozilla.org/en-US/developers/addon/translate-now-ai/versions)；公开地址 `/firefox/addon/translate-now-ai/`。
+- 首次提交版本：`0.1.1`。下一次更新请用更高版本（例如 `0.1.2`），避免重复提交正在审核的版本。
+- Chrome 发布项目：`translate-now-releases`；服务账号：`translate-now-publisher@translate-now-releases.iam.gserviceaccount.com`。服务账号只用于商店 API，不授予 Cloud 项目角色。
+- 可复用的展示截图保存在 `store/screenshots/`，使用本地演示文章与示例凭据截取。
+
 ## 首次上架
 
 首次商店条目需要在开发者后台创建；自动更新不能代替条目、截图、隐私声明及账号设置。
@@ -52,7 +60,7 @@ Chrome 使用 **Web Store API v2**。按 [Google 官方说明](https://developer
 
 ## 凭据验证与失败重试
 
-Actions → Release → Run workflow：填写**已存在的版本标签**，选择 `both`、`chrome` 或 `firefox`。默认 `dry_run: true` 只检查认证，不上传商店、不创建 GitHub Release。确认后关闭 dry-run 执行实际提交。
+Actions → Release → Run workflow：选择 `both`、`chrome` 或 `firefox`。默认 `dry_run: true` 只检查认证，不上传商店、不创建 GitHub Release；此时可以不填标签，直接验证选中分支的配置。实际发布时必须填写**已存在的版本标签**并关闭 dry-run。
 
 两个商店独立执行，一个失败不会取消另一个。单个商店失败时，通过手动工作流只重试失败的商店，避免重新上传已经成功的版本。所有提交使用该标签构建的包，不会从 main 偷换版本。每个版本发布串行执行，防止同版本并发上传。
 

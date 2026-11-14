@@ -6,8 +6,8 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Existing version tag, for example v0.1.1'
-        required: true
+        description: 'Version tag; leave empty only to dry-run the selected branch'
+        required: false
         type: string
       store:
         description: 'Store to submit (retry one store independently)'
@@ -33,6 +33,7 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
       tag: ${{ steps.version.outputs.tag }}
+      commit: ${{ steps.version.outputs.commit }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -41,11 +42,20 @@ jobs:
       - name: Validate release tag and package version
         id: version
         env:
-          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+          RELEASE_TAG: ${{ inputs.tag || (github.event_name == 'push' && github.ref_name) || '' }}
+          ALLOW_UNTAGGED_DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
         run: |
+          if [ -z "$RELEASE_TAG" ]; then
+            if [ "$ALLOW_UNTAGGED_DRY_RUN" != "true" ]; then
+              echo "::error::A version tag is required for actual publication."
+              exit 1
+            fi
+            RELEASE_TAG="v$(node -p 'JSON.parse(require("node:fs").readFileSync("package.json", "utf8")).version')"
+          fi
           VERSION=$(node scripts/release.mjs check "$RELEASE_TAG")
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+          echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
@@ -101,7 +111,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ needs.build.outputs.tag }}
+          ref: ${{ needs.build.outputs.commit }}
           persist-credentials: false
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4

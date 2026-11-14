@@ -19,6 +19,10 @@ A free, open-source, bring-your-own-key bilingual web page translator for Chrome
 - **站点规则**：按网站设置“总是翻译 / 从不翻译 / 手动”，还可以单独设置风格、显示方式和划词翻译开关。可选“自动翻译外语网页”。
 - **其他**：中/英文界面、深色模式、导入/导出设置、6 种译文样式。
 
+## 商店安装
+
+v0.1.1 已提交 [Chrome Web Store](https://chromewebstore.google.com/detail/hkahabmfamcffhaficngecicoagnaknj) 和 [Firefox AMO](https://addons.mozilla.org/firefox/addon/translate-now-ai/) 审核，审核通过后可直接安装并自动更新。审核期间可先使用下方 GitHub Releases 安装方式。
+
 ## 安装（从 GitHub Releases）
 
 到 [Releases](https://github.com/mechiland/translate-now/releases) 下载最新版本。
@@ -92,7 +96,8 @@ A free, open-source, bring-your-own-key bilingual web page translator for Chrome
 - [ ] 输入框翻译
 - [ ] iframe 支持
 - [ ] 常见网站（X/Twitter、Reddit、YouTube 评论）适配规则
-- [ ] 发布到 Chrome Web Store / Edge Add-ons / Firefox AMO
+- [x] 提交 Chrome Web Store / Firefox AMO 审核并配置自动发布
+- [ ] 发布到 Edge Add-ons
 
 ## 开发
 
