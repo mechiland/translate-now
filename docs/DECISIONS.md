@@ -28,6 +28,15 @@ Decisions made while building v0.1.0, with the reasoning, so they can be revisit
 - **Hover translation** is a _tap_ of the modifier on its own (press and release within 600 ms, no other key, click or wheel in between), not "hold while hovering". Ctrl+C, Ctrl+click, Ctrl+scroll and typing in fields therefore never send requests. Default key is Ctrl: tapping Alt opens browser menus on Windows/Linux and Shift switches Chinese IMEs. The paragraph is the segmenter run under the pointer in its nearest block-level ancestor; it is always shown bilingually (translation-only mode would hide what the user is reading) and reuses the page translator's batching, cache and error handling. While the whole page is translated, the tap does nothing except retrying a failed paragraph; "show original" and settings changes also clear hover translations.
 - Injected UI (selection button/card, toasts) lives in an open Shadow DOM under a `<tn-ui>` element, so page CSS can't leak in and ours can't leak out. Written in plain DOM (no React in the content script) to keep it small.
 
+## Extension UI (popup and options)
+
+- **shadcn components from the radix-base registry** (`components.json` → `@radix-base`): Radix Themes design tokens with Base UI behavior, installed as source into `src/components/ui` and `src/lib/theme`. Use these controls instead of hand-written ones; app-specific compositions live in `src/components/app` (`SimpleSelect`, `Choice`, `ConfirmButton`, `SettingsCard`, `AppTheme`).
+- **Icons are HugeIcons** (`@hugeicons/react` + `@hugeicons/core-free-icons`). The registry ships lucide imports; they were replaced, and newly added components need the same change.
+- **System fonts only** (the registry's default font stack); no font downloads.
+- **Tailwind v4 is scoped to extension pages.** `src/styles/globals.css` is imported only by the popup and options entrypoints and scans only `src/`. The content script keeps its own small, Shadow-DOM-scoped CSS so nothing leaks into web pages.
+- **The popup mimics the browser's own menus** (e.g. Chrome's Extensions bubble): plain title and close button, bold section headings, 48px icon rows with a trailing control, and a full-width divider before a "Settings" footer row. Header and footer stay fixed and the middle scrolls, since browser popups are capped at 600px tall. Settings moved from a top-right gear to that footer row.
+- **Theme**: indigo accent (close to the browser's blue and the logo), solid panels, follows `prefers-color-scheme`. Destructive actions use an AlertDialog instead of `window.confirm`; transient results use toasts.
+
 ## Settings & storage
 
 - Everything (including keys) lives in `storage.local`, never `storage.sync`. Simpler, and keys never leave the device. Export excludes keys unless explicitly requested; import keeps existing keys when the file has none.

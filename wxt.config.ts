@@ -1,16 +1,19 @@
+import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'wxt';
 
 // See https://wxt.dev/api/config.html
 export default defineConfig({
+  srcDir: 'src',
   modules: ['@wxt-dev/module-react'],
+  // Tailwind is only imported by the popup and options pages (src/styles/globals.css).
+  vite: () => ({ plugins: [tailwindcss()] }),
   // Explicit imports everywhere (no auto-imports) keeps lint/tsc/vitest simple.
   imports: false,
   zip: {
     // Only reproducible build inputs are sent to AMO; local credentials stay out.
     includeSources: [
-      'entrypoints/**',
-      'lib/**',
-      'assets/**',
+      'src/**',
+      'components.json',
       'public/**',
       'scripts/gen-icons.mjs',
       'package.json',

@@ -137,7 +137,24 @@ REAL_SITES=1 pnpm exec playwright test realsites   # 在真实网站上冒烟测
 
 所需 Secrets、凭据 dry-run 和单商店重试见 [发布指南](docs/PUBLISHING.md)（英文）。
 
-技术栈：[WXT](https://wxt.dev)、TypeScript、React（仅 popup 与设置页）、Vitest、Playwright。设计决策见 [docs/DECISIONS.md](docs/DECISIONS.md)。
+### 目录结构
+
+```
+src/
+  entrypoints/      后台、内容脚本、弹窗、设置页（WXT 入口）
+  components/ui/    来自 radix-base registry 的 shadcn 组件（生成代码，用 shadcn 添加）
+  components/app/   基于它们组合的应用组件
+  hooks/            React hooks
+  lib/              与框架无关的逻辑：DOM 分段、服务商、设置、翻译、多语言
+  lib/theme/        radix-base 设计令牌（生成代码）
+  styles/           弹窗与设置页的 Tailwind 入口
+public/             图标与 _locales，原样复制
+tests/              单元测试（Vitest）、端到端测试（Playwright）、发布脚本测试
+```
+
+添加界面组件：`pnpm dlx shadcn@latest add @radix-base/<name>`，然后把新文件里的 lucide 图标换成 HugeIcons。
+
+技术栈：[WXT](https://wxt.dev)、TypeScript；弹窗与设置页使用 React + [shadcn/ui](https://ui.shadcn.com)（[radix-base](https://radix-shadcn.dev) registry：Radix Themes 设计令牌 + Base UI）、Tailwind CSS v4、[HugeIcons](https://hugeicons.com)；测试使用 Vitest、Playwright。设计决策见 [docs/DECISIONS.md](docs/DECISIONS.md)。
 
 ## License
 

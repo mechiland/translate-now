@@ -278,9 +278,11 @@ test('options page: test connection and fetch models against the mock server', a
   const page = await context.newPage();
   await page.goto(`chrome-extension://${extId}/options.html#providers`);
   await page.getByRole('button', { name: /Test connection|测试连接/ }).click();
-  await expect(page.locator('.result.ok')).toContainText('[ZH] Hello, world!');
+  await expect(page.locator('[data-testid=test-status][data-status=ok]')).toContainText(
+    '[ZH] Hello, world!',
+  );
   await page.getByRole('button', { name: /Fetch models|获取模型列表/ }).click();
-  await expect(page.locator('.hint.ok')).toContainText('2');
+  await expect(page.locator('[data-testid=models-status][data-status=ok]')).toContainText('2');
   await shot(page, '05-options');
 });
 

@@ -1,4 +1,4 @@
-// Regenerate public/icon/*.png from assets/icon.svg (requires rsvg-convert).
+// Regenerate public/icon/*.png from src/assets/icon.svg (requires rsvg-convert).
 import { execFileSync } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
 
@@ -9,7 +9,7 @@ for (const size of [16, 32, 48, 96, 128]) {
     String(size),
     '-h',
     String(size),
-    'assets/icon.svg',
+    'src/assets/icon.svg',
     '-o',
     `public/icon/${size}.png`,
   ]);
