@@ -1,5 +1,10 @@
 import type { MessageKey } from '@/lib/i18n';
-import type { TranslationTheme, UiLang } from '@/lib/settings/schema';
+import {
+  HOVER_MODIFIERS,
+  type HoverModifier,
+  type TranslationTheme,
+  type UiLang,
+} from '@/lib/settings/schema';
 import type { SectionProps } from './types';
 
 const THEMES: TranslationTheme[] = [
@@ -122,6 +127,29 @@ export function SelectionSection({ settings, update, t }: SectionProps) {
         </div>
       </div>
       <p className="muted">{t('selectionHint')}</p>
+      <h3>{t('hoverTitle')}</h3>
+      <div className="field">
+        <span className="label">{t('hoverModifier')}</span>
+        <div className="seg">
+          {HOVER_MODIFIERS.map((m) => (
+            <button
+              key={m}
+              className={settings.hover.modifier === m ? 'on' : ''}
+              onClick={() => void update((s) => void (s.hover.modifier = m))}
+            >
+              {t(HOVER_LABEL[m])}
+            </button>
+          ))}
+        </div>
+      </div>
+      <p className="muted">{t('hoverHint')}</p>
     </div>
   );
 }
+
+const HOVER_LABEL: Record<HoverModifier, MessageKey> = {
+  off: 'hoverOff',
+  ctrl: 'hoverCtrl',
+  alt: 'hoverAlt',
+  shift: 'hoverShift',
+};

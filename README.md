@@ -15,6 +15,7 @@ Use your own LLM API key (OpenAI, OpenRouter, DeepSeek, Qwen, Gemini, Claude, Ol
   - Short text (buttons, labels, headings) gets its translation right after the original, keeping layouts intact.
   - Paragraphs are batched into one request; results are cached in local IndexedDB so the same text is never requested twice.
 - **Selection translation**: select text and click the button for a translation card (copy, change target language, drag). Single words and phrases get dictionary-style explanations. Also available from the context menu and a keyboard shortcut.
+- **Hover translation**: point at a paragraph and tap `Ctrl` on its own to translate just that paragraph; tap again to remove it. The key can be changed to `Alt`/`Shift` or turned off under **Selection & hover**.
 - **Providers**: presets for OpenAI, OpenRouter, DeepSeek, Qwen (DashScope), Google Gemini, Anthropic Claude and Ollama, plus any OpenAI-compatible endpoint. Save multiple profiles and switch between them; test the connection and fetch the model list from the settings page.
 - **Translation styles**: standard, casual, formal, academic, technical, literary, news, or your own prompt; glossary support.
 - **Site rules**: always / never / manual translation per site, with per-site style, display mode and selection-translation switch. Optionally translate foreign-language pages automatically.
@@ -71,10 +72,11 @@ About "Codex": ChatGPT subscriptions (Plus/Pro) have no official API for third-p
 
 ## Keyboard shortcuts
 
-| Action                         | Default |
-| ------------------------------ | ------- |
-| Translate page / show original | `Alt+A` |
-| Translate selected text        | `Alt+S` |
+| Action                           | Default    |
+| -------------------------------- | ---------- |
+| Translate page / show original   | `Alt+A`    |
+| Translate selected text          | `Alt+S`    |
+| Translate paragraph under cursor | Tap `Ctrl` |
 
 Change them at `chrome://extensions/shortcuts` (Firefox: `about:addons` → gear → Manage Extension Shortcuts).
 
@@ -98,7 +100,7 @@ See [PRIVACY.md](PRIVACY.md) for the full policy.
 
 - [ ] Preserve inline formatting (links, bold) in translations
 - [ ] Streaming output for selection translation
-- [ ] Hover + modifier key to translate a single paragraph
+- [x] Hover + modifier key to translate a single paragraph
 - [ ] Translate text in input boxes
 - [ ] iframe support
 - [ ] Rules for popular sites (X/Twitter, Reddit, YouTube comments)

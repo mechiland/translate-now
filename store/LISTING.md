@@ -14,6 +14,7 @@ Read the web in two languages with Translate Now, a free and open-source browser
 
 - Translate web pages paragraph by paragraph, with translations below the originals or in translation-only mode.
 - Select text for a floating translation card, or use the context menu and keyboard shortcuts.
+- Point at a paragraph and tap Ctrl to translate just that paragraph.
 - Connect OpenAI, OpenRouter, DeepSeek, Gemini, Claude, DashScope, local Ollama, or an OpenAI-compatible endpoint.
 - Save multiple provider profiles, choose translation styles, and add your own glossary.
 - Set per-site rules and optionally translate foreign-language pages automatically.
@@ -34,6 +35,7 @@ Translate Now 是免费开源的网页双语翻译扩展，使用你自己的 AP
 
 - 网页逐段双语翻译或仅显示译文，滚动时继续翻译。
 - 划词翻译浮窗、右键菜单、Alt+A / Alt+S 快捷键。
+- 鼠标停在段落上轻按 Ctrl，只翻译这一段。
 - 支持 OpenAI、OpenRouter、DeepSeek、Gemini、Claude、通义千问、本地 Ollama 及 OpenAI 兼容服务。
 - 多服务配置、自定义翻译风格、术语表、站点规则和可选自动翻译。
 - 本地译文缓存、中英文界面、深色模式及多种译文样式。
