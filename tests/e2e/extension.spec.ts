@@ -165,6 +165,41 @@ test('selection translation via floating button', async ({ context, sw, server }
   await expect(card).toHaveCount(0);
 });
 
+test('tapping Ctrl over a paragraph translates only that paragraph; tapping again removes it', async ({
+  context,
+  sw,
+  server,
+}) => {
+  await configure(sw, baseSettings(server));
+  const page = await openFixture(context, server);
+  const bold = (await page.locator('#p2 b').boundingBox())!;
+  await page.mouse.move(bold.x + bold.width / 2, bold.y + bold.height / 2);
+
+  // Ctrl+C is a shortcut, not a tap.
+  await page.keyboard.press('Control+c');
+  await page.waitForTimeout(300);
+  expect(server.requests).toHaveLength(0);
+
+  await page.keyboard.press('Control');
+  await expect(translationOf(page, 'p2')).toHaveText(
+    '[ZH] Simple tools are often the most useful ones, as this link shows.',
+  );
+  await expect(page.locator('tn-translation')).toHaveCount(1);
+  expect(server.requests).toHaveLength(1);
+  await shot(page, '04-hover');
+
+  await page.keyboard.press('Control');
+  await expect(page.locator('tn-translation')).toHaveCount(0);
+
+  // Turning it off in settings disables the trigger.
+  await configure(sw, baseSettings(server, { hover: { modifier: 'off' } }));
+  await page.waitForTimeout(200);
+  await page.keyboard.press('Control');
+  await page.waitForTimeout(300);
+  await expect(page.locator('tn-translation')).toHaveCount(0);
+  expect(server.requests).toHaveLength(1);
+});
+
 test('selection translation via context-menu message', async ({ context, sw, server }) => {
   await configure(sw, baseSettings(server));
   const page = await openFixture(context, server);

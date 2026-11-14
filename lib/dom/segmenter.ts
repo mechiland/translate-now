@@ -212,6 +212,11 @@ function isBlockDisplay(display: string, el: Element): boolean {
   return true;
 }
 
+/** Is `el` laid out as a block (so it can hold its own paragraph)? */
+export function isBlockLevel(el: Element): boolean {
+  return isBlockDisplay(defaultGetDisplay(el), el);
+}
+
 function defaultGetDisplay(el: Element): string {
   const view = el.ownerDocument.defaultView;
   if (!view) return '';

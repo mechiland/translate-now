@@ -4,6 +4,7 @@ import { sameLanguage } from '@/lib/languages';
 import { createT, type TFunction } from '@/lib/i18n';
 import { sendToBackground, type ContentMessage, type PageState } from '@/lib/messaging';
 import { detectLanguage, type LanguageDetector } from '@/lib/dom/detect';
+import { HoverTrigger } from '@/lib/dom/hoverTrigger';
 import { PageTranslator } from '@/lib/dom/pageTranslator';
 import { SelectionUi } from '@/lib/dom/selectionUi';
 import { getActiveProvider, type Settings } from '@/lib/settings/schema';
@@ -91,6 +92,15 @@ export default defineContentScript({
         openSettings: t('openSettings'),
         failed: t('failed'),
       }),
+    });
+
+    new HoverTrigger({
+      doc: document,
+      modifier: () => settings.hover.modifier,
+      onTrigger: (target) => {
+        fatalShown = false;
+        page.toggleParagraph(target);
+      },
     });
 
     const state = (): PageState => ({ translated: page.active, host, ...page.stats() });

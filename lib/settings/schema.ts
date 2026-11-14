@@ -51,6 +51,15 @@ export interface SelectionSettings {
   trigger: 'icon' | 'auto';
 }
 
+/** Modifier key that translates the paragraph under the pointer when tapped alone. */
+export type HoverModifier = 'off' | 'ctrl' | 'alt' | 'shift';
+
+export const HOVER_MODIFIERS: readonly HoverModifier[] = ['off', 'ctrl', 'alt', 'shift'];
+
+export interface HoverSettings {
+  modifier: HoverModifier;
+}
+
 export interface BatchSettings {
   /** Max characters per request. */
   maxChars: number;
@@ -77,6 +86,7 @@ export interface Settings {
   /** Automatically translate pages whose language differs from the target language. */
   autoTranslateForeign: boolean;
   selection: SelectionSettings;
+  hover: HoverSettings;
   batch: BatchSettings;
   uiLang: UiLang;
 }
@@ -107,6 +117,8 @@ export function createDefaultSettings(browserLang?: string): Settings {
     siteRules: [],
     autoTranslateForeign: false,
     selection: { enabled: true, trigger: 'icon' },
+    // Ctrl: tapping Alt opens browser menus on Windows/Linux, and Shift switches Chinese IMEs.
+    hover: { modifier: 'ctrl' },
     batch: { maxChars: 2000, maxSegments: 12, concurrency: 4 },
     uiLang: 'auto',
   };
@@ -140,6 +152,9 @@ export function normalizeSettings(input: unknown, browserLang?: string): Setting
   if (settings.providers.length === 0) settings.providers = defaults.providers;
   if (!settings.providers.some((p) => p.id === settings.activeProviderId)) {
     settings.activeProviderId = settings.providers[0]!.id;
+  }
+  if (!HOVER_MODIFIERS.includes(settings.hover.modifier)) {
+    settings.hover.modifier = defaults.hover.modifier;
   }
   const b = settings.batch;
   b.maxChars = clamp(b.maxChars, 200, 20000);

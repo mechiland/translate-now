@@ -6,6 +6,7 @@ import { shouldSkipLanguage, type LanguageDetector, detectLanguage } from './det
 import { PAGE_CSS } from './pageStyles';
 import {
   collectSegments,
+  isBlockLevel,
   isInsideInjected,
   isShortSnippet,
   TRANSLATION_TAG,
@@ -46,6 +47,8 @@ export interface PageTranslatorDeps {
 
 const STYLE_ID = 'tn-page-style';
 
+export type ParagraphToggle = 'translated' | 'removed' | 'none';
+
 export class PageTranslator {
   private units = new Map<Text, Unit>();
   private byBlock = new Map<Element, Set<Unit>>();
@@ -53,6 +56,8 @@ export class PageTranslator {
   private io: IntersectionObserver | undefined;
   private mo: MutationObserver | undefined;
   private queue = new Set<Unit>();
+  /** Paragraphs translated on demand (hover) while the page itself is not translated. */
+  private pinned = new Set<Unit>();
   private flushTimer: ReturnType<typeof setTimeout> | undefined;
   private rescanTimer: ReturnType<typeof setTimeout> | undefined;
   private rescanDeadline = 0;
@@ -103,7 +108,7 @@ export class PageTranslator {
   }
 
   stop(): void {
-    if (!this._active) return;
+    if (!this._active && this.pinned.size === 0) return;
     this._active = false;
     this.deps.cancel();
     this.io?.disconnect();
@@ -116,6 +121,7 @@ export class PageTranslator {
     for (const unit of this.units.values()) this.resetUnit(unit);
     this.units.clear();
     this.byBlock.clear();
+    this.pinned.clear();
     const html = this.doc.documentElement;
     html.removeAttribute('data-tn-mode');
     html.removeAttribute('data-tn-theme');
@@ -145,6 +151,40 @@ export class PageTranslator {
     if (was) this.start();
   }
 
+  /**
+   * Translate the single paragraph containing `target` without translating the page,
+   * or remove that translation again. While the whole page is translated this does
+   * nothing (except retrying a failed paragraph), since every paragraph is handled.
+   */
+  toggleParagraph(target: Node): ParagraphToggle {
+    const injected = closestTranslation(target);
+    if (injected) {
+      const unit = [...this.units.values()].find((u) => u.el === injected);
+      if (!unit) return 'none';
+      return this.togglePinned(unit);
+    }
+    const seg = this.segmentAt(target);
+    if (!seg) return 'none';
+    const existing = this.units.get(seg.textNodes[0]!);
+    if (existing && existing.block === seg.block && existing.text === seg.text) {
+      return this.togglePinned(existing);
+    }
+    if (existing) this.removeUnit(existing);
+    if (this._active) return 'none';
+
+    this.injectStyle();
+    // Hover translations always show below the original, in the configured theme.
+    this.doc.documentElement.setAttribute('data-tn-theme', this.deps.getConfig().theme);
+    const unit: Unit = { ...seg, status: 'idle', gen: 0 };
+    this.addUnit(unit);
+    this.pinned.add(unit);
+    const cached = this.memory.get(unit.text);
+    if (cached !== undefined) this.renderDone(unit, cached);
+    else this.enqueue(unit);
+    this.deps.onChange?.();
+    return 'translated';
+  }
+
   retryErrors(): void {
     for (const unit of this.units.values()) {
       if (unit.status === 'error') {
@@ -155,6 +195,42 @@ export class PageTranslator {
   }
 
   // ---------------------------------------------------------------------------
+
+  private togglePinned(unit: Unit): ParagraphToggle {
+    if (unit.status === 'error') {
+      this.resetUnit(unit);
+      this.enqueue(unit);
+      return 'translated';
+    }
+    if (this._active || !this.pinned.has(unit)) return 'none';
+    this.removeUnit(unit);
+    if (this.pinned.size === 0) this.doc.documentElement.removeAttribute('data-tn-theme');
+    this.deps.onChange?.();
+    return 'removed';
+  }
+
+  /** The translatable run that contains `target`, in its nearest block-level ancestor. */
+  private segmentAt(target: Node): Segment | undefined {
+    const body = this.doc.body;
+    let el: Element | null = target.nodeType === 1 ? (target as Element) : target.parentElement;
+    if (!el || !body?.contains(el) || el === body || isInsideInjected(el)) return undefined;
+    while (el && el !== body && !isBlockLevel(el)) el = el.parentElement;
+    if (!el || el === body) return undefined;
+    const block = el;
+    const segments = collectSegments(block).filter((s) => s.block === block);
+    return (
+      segments.find((s) => s.nodes.some((n) => n === target || n.contains(target))) ??
+      // Pointer on the block's padding/margin rather than on its text.
+      (target === block ? segments[0] : undefined)
+    );
+  }
+
+  private addUnit(unit: Unit): void {
+    this.units.set(unit.textNodes[0]!, unit);
+    let set = this.byBlock.get(unit.block);
+    if (!set) this.byBlock.set(unit.block, (set = new Set()));
+    set.add(unit);
+  }
 
   private injectStyle(): void {
     if (this.doc.getElementById(STYLE_ID)) return;
@@ -182,10 +258,7 @@ export class PageTranslator {
       }
       if (existing) this.removeUnit(existing);
       const unit: Unit = { ...seg, status: 'idle', gen: 0 };
-      this.units.set(key, unit);
-      let set = this.byBlock.get(seg.block);
-      if (!set) this.byBlock.set(seg.block, (set = new Set()));
-      set.add(unit);
+      this.addUnit(unit);
       // (Re-)observing triggers a fresh intersection callback for this block.
       this.io?.unobserve(seg.block);
       this.io?.observe(seg.block);
@@ -203,6 +276,7 @@ export class PageTranslator {
   private removeUnit(unit: Unit): void {
     this.resetUnit(unit);
     this.queue.delete(unit);
+    this.pinned.delete(unit);
     const key = unit.textNodes[0];
     if (key && this.units.get(key) === unit) this.units.delete(key);
     const set = this.byBlock.get(unit.block);
@@ -266,7 +340,7 @@ export class PageTranslator {
   }
 
   private enqueue(unit: Unit): void {
-    if (!this._active) return;
+    if (!this._active && !this.pinned.has(unit)) return;
     unit.status = 'queued';
     this.queue.add(unit);
     if (!this.flushTimer) {
@@ -284,7 +358,9 @@ export class PageTranslator {
     const cfg = this.deps.getConfig();
     const gens = new Map(units.map((u) => [u, u.gen]));
     const fresh = (u: Unit) =>
-      this._active && gens.get(u) === u.gen && this.units.has(u.textNodes[0]!);
+      (this._active || this.pinned.has(u)) &&
+      gens.get(u) === u.gen &&
+      this.units.has(u.textNodes[0]!);
 
     const decisions = await Promise.all(
       units.map(async (u) => {
@@ -410,4 +486,13 @@ export class PageTranslator {
       this.enqueue(unit);
     };
   }
+}
+
+function closestTranslation(node: Node): HTMLElement | undefined {
+  let n: Node | null = node;
+  while (n) {
+    if (n.nodeType === 1 && (n as Element).localName === TRANSLATION_TAG) return n as HTMLElement;
+    n = n.parentNode;
+  }
+  return undefined;
 }

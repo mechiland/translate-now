@@ -49,7 +49,7 @@ const zh = {
   navProviders: '翻译服务',
   navTranslation: '翻译设置',
   navDisplay: '显示样式',
-  navSelection: '划词翻译',
+  navSelection: '划词与悬停',
   navSites: '站点规则',
   navShortcuts: '快捷键',
   navData: '数据与缓存',
@@ -141,6 +141,14 @@ const zh = {
   selectionTriggerIcon: '选中后显示翻译按钮，点击后翻译（推荐，节省 Token）',
   selectionTriggerAuto: '选中即翻译',
   selectionHint: '也可以使用右键菜单或快捷键翻译选中的文本。',
+  hoverTitle: '悬停翻译',
+  hoverModifier: '触发按键',
+  hoverOff: '关闭',
+  hoverCtrl: 'Ctrl',
+  hoverAlt: 'Alt（Mac：Option）',
+  hoverShift: 'Shift',
+  hoverHint:
+    '鼠标停在某个段落上，单独按一下所选按键即可只翻译这一段，再按一次取消。适合只想看懂某一段、不想翻译整页的时候。在 Windows / Linux 上单独按 Alt 可能会打开浏览器菜单，使用中文输入法时 Shift 会切换中英文。',
   // sites
   sitesIntro:
     '为特定网站设置自动翻译 / 从不翻译，以及单独的风格、显示方式。“example.com” 同时匹配其子域名；“*.example.com” 只匹配子域名；“=www.example.com” 只匹配该域名。',
@@ -229,7 +237,7 @@ const en: Record<MessageKey, string> = {
   navProviders: 'Services',
   navTranslation: 'Translation',
   navDisplay: 'Display',
-  navSelection: 'Selection',
+  navSelection: 'Selection & hover',
   navSites: 'Site rules',
   navShortcuts: 'Shortcuts',
   navData: 'Data & cache',
@@ -321,6 +329,14 @@ const en: Record<MessageKey, string> = {
     'Show a button after selecting, translate on click (recommended, saves tokens)',
   selectionTriggerAuto: 'Translate immediately on selection',
   selectionHint: 'You can also use the context menu or the keyboard shortcut.',
+  hoverTitle: 'Hover translation',
+  hoverModifier: 'Trigger key',
+  hoverOff: 'Off',
+  hoverCtrl: 'Ctrl',
+  hoverAlt: 'Alt (Mac: Option)',
+  hoverShift: 'Shift',
+  hoverHint:
+    'Point at a paragraph and tap the selected key on its own to translate just that paragraph; tap again to remove it. Handy when you only need one paragraph, not the whole page. On Windows/Linux, tapping Alt may open the browser menu, and Shift switches some Chinese input methods.',
   sitesIntro:
     'Always / never translate specific sites, and override style or display per site. "example.com" also matches subdomains; "*.example.com" matches subdomains only; "=www.example.com" matches that host only.',
   sitePattern: 'Site',
