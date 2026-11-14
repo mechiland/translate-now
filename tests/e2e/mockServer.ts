@@ -86,6 +86,11 @@ export async function startMockServer(fixturesDir: string): Promise<MockServer> 
       mode = m;
       rateLimitedLeft = m === '429-twice' ? 2 : 0;
     },
-    close: () => new Promise((resolve) => server.close(() => resolve())),
+    close: () =>
+      new Promise((resolve) => {
+        server.close(() => resolve());
+        // The browser keeps connections alive; don't wait for it to hang up.
+        server.closeAllConnections();
+      }),
   };
 }
