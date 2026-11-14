@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/mechiland/translate-now/compare/v0.3.0...v0.3.1) (2026-11-14)
+
+
+### Bug Fixes
+
+* translate text in buttons and widget roles ([#9](https://github.com/mechiland/translate-now/issues/9)) ([cca807b](https://github.com/mechiland/translate-now/commit/cca807b534d3b8e4b8695880a88b6bd3fc47c461))
+
 ## [0.3.0](https://github.com/mechiland/translate-now/compare/v0.2.0...v0.3.0) (2026-11-14)
 
 
