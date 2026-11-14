@@ -108,7 +108,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ needs.build.outputs.tag }}
         run: |
-          # release-please normally creates the release (with Chinese notes) before this runs.
+          # release-please normally creates the release (with its notes) before this runs.
           gh release view "$RELEASE_TAG" >/dev/null 2>&1 || gh release create "$RELEASE_TAG" --verify-tag --title "$RELEASE_TAG" --generate-notes
           gh release upload "$RELEASE_TAG" .output/*.zip --clobber
 

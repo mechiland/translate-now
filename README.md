@@ -131,8 +131,8 @@ Run `pnpm exec playwright install chromium` before the first E2E run.
 
 Releases are automated with [release-please](https://github.com/googleapis/release-please):
 
-1. PRs are squash-merged, and **the PR title becomes the commit message**. Titles must follow [Conventional Commits](https://www.conventionalcommits.org/) (checked in CI). Release notes are in Chinese, so write the description of user-facing changes (`feat`, `fix`, `perf`) in Chinese, e.g. `feat: 悬停段落翻译`.
-2. After each merge to `main`, release-please updates a release PR that bumps the version and the Chinese `CHANGELOG.md`.
+1. PRs are squash-merged, and **the PR title becomes the commit message**. Titles must follow [Conventional Commits](https://www.conventionalcommits.org/) (checked in CI), e.g. `feat: translate a paragraph on hover`. The repository is English-only (commits, PRs, release notes, docs); Chinese is supplementary (`README.zh.md`, the Chinese UI and store copy).
+2. After each merge to `main`, release-please updates a release PR that bumps the version and updates `CHANGELOG.md`.
 3. Merging the release PR tags the version, creates the GitHub Release, attaches the packages, and submits the version to the Chrome Web Store and Firefox AMO for review. Approved versions are published automatically.
 
 Secrets, credential dry runs and per-store retries are covered in the [publishing guide](docs/PUBLISHING.md).

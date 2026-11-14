@@ -131,8 +131,8 @@ REAL_SITES=1 pnpm exec playwright test realsites   # 在真实网站上冒烟测
 
 版本发布由 [release-please](https://github.com/googleapis/release-please) 自动完成：
 
-1. PR 使用 squash 合并，**PR 标题就是最终的提交信息**，必须符合 [Conventional Commits](https://www.conventionalcommits.org/zh-hans/)（CI 会检查）。发布说明使用中文，所以面向用户的改动（`feat`、`fix`、`perf`）请用中文写描述，例如 `feat: 悬停段落翻译`。
-2. 每次合并到 `main` 后，release-please 会更新一个发布 PR，其中包含版本号升级和中文 `CHANGELOG.md`。
+1. PR 使用 squash 合并，**PR 标题就是最终的提交信息**，必须符合 [Conventional Commits](https://www.conventionalcommits.org/zh-hans/)（CI 会检查），例如 `feat: translate a paragraph on hover`。本仓库以英文为准：提交信息、PR、发布说明和文档都使用英文；中文只是补充（本文件、中文界面和商店中文描述）。
+2. 每次合并到 `main` 后，release-please 会更新一个发布 PR，其中包含版本号升级和 `CHANGELOG.md` 更新。
 3. 合并发布 PR 后会自动打标签、创建 GitHub Release 并上传安装包，同时提交 Chrome Web Store 和 Firefox AMO 审核，审核通过后自动上架。
 
 所需 Secrets、凭据 dry-run 和单商店重试见 [发布指南](docs/PUBLISHING.md)（英文）。

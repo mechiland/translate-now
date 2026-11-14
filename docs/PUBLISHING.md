@@ -14,10 +14,10 @@
 PR (Conventional Commits title) ──squash──▶ main
                                              │
                      release-please.yml ◀────┘  updates the release PR
-                                             │  (version bump + Chinese CHANGELOG)
+                                             │  (version bump + CHANGELOG)
           merge the release PR ──────────────┘
                      │
-                     ├─ release-please tags vX.Y.Z and creates the GitHub Release (Chinese notes)
+                     ├─ release-please tags vX.Y.Z and creates the GitHub Release
                      └─ release.yml (called directly):
                           build → compile, lint, unit + release tests, Chromium E2E,
                                   zip, web-ext lint
@@ -26,13 +26,13 @@ PR (Conventional Commits title) ──squash──▶ main
                           submit (firefox) → AMO listed channel with sources
 ```
 
-1. **Write a Conventional Commits PR title.** PRs are squash-merged and the PR title becomes the commit message on `main`; the `PR title` workflow enforces the format. The description of user-facing changes must be in Chinese because it is copied into the release notes:
-   - `feat: 悬停段落翻译` → minor bump, listed under 新功能
-   - `fix(selection): 修复卡片超出屏幕` → patch bump, listed under 问题修复
-   - `perf: …` → 性能优化, `revert: …` → 回滚, `deps: …` → 依赖更新
+1. **Write a Conventional Commits PR title.** PRs are squash-merged and the PR title becomes the commit message on `main`; the `PR title` workflow enforces the format. Write titles in English; user-facing descriptions are copied into the release notes as-is:
+   - `feat: translate a paragraph on hover` → minor bump, listed under Features
+   - `fix(selection): keep the card on screen` → patch bump, listed under Bug Fixes
+   - `perf: …` → Performance Improvements, `revert: …` → Reverts, `deps: …` → Dependencies
    - `docs`, `refactor`, `test`, `build`, `ci`, `chore`, `style` → no release on their own and hidden from the notes
    - `feat!: …` or a `BREAKING CHANGE:` footer → breaking change (a minor bump while the version is below 1.0)
-2. **Review the release PR.** After each merge, release-please opens or updates `chore(main): 发布 X.Y.Z`. It bumps `package.json` and `.release-please-manifest.json` and prepends the Chinese section to `CHANGELOG.md`. Edit the PR if the notes need polishing.
+2. **Review the release PR.** After each merge, release-please opens or updates `chore(main): release X.Y.Z`. It bumps `package.json` and `.release-please-manifest.json` and prepends the new section to `CHANGELOG.md`. Edit the PR if the notes need polishing.
 3. **Merge the release PR** when you want to ship. Everything after that is automatic. CI passing does not mean the stores approved the version; Chrome and Firefox reviews usually take from hours to a few days. Approved versions are published automatically.
 
 Notes:
