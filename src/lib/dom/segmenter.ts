@@ -20,7 +20,6 @@ const HARD_SKIP = new Set([
   'input',
   'select',
   'option',
-  'button',
   'svg',
   'math',
   'canvas',
@@ -137,12 +136,28 @@ export interface Segment {
   text: string;
   /** True when this run is the only content of the block and the block holds only text-level elements. */
   fullBlock: boolean;
+  /**
+   * Where the translation goes: inside the block right after the run (default), or right
+   * after the block itself when the block lays its children out in a row (flex/grid), where an
+   * extra child would end up beside the text instead of below it.
+   */
+  placement: 'inside' | 'after';
+}
+
+/** The parts of an element's computed style the segmenter needs. */
+export interface ElementStyle {
+  display: string;
+  flexDirection?: string;
+  /** Visually hidden (visibility: hidden, or an sr-only style 1px/clipped box). */
+  hidden?: boolean;
 }
 
 export interface SegmenterOptions {
   /** Minimum characters for a run to be worth translating. */
   minLength?: number;
+  /** Shorthand for tests: only the display value. */
   getDisplay?: (el: Element) => string;
+  getStyle?: (el: Element) => ElementStyle;
 }
 
 const BR_MARK = '';
@@ -162,8 +177,9 @@ export function isTranslatableText(text: string, minLength = 2): boolean {
   if (!letters) return false;
   // Single CJK char or 1-letter strings aren't worth a request.
   if (letters.length < 2) return false;
-  // Pure URL or email
+  // Pure URL, bare domain or email
   if (/^(https?:\/\/|www\.)\S+$/i.test(text) || /^\S+@\S+\.\S+$/.test(text)) return false;
+  if (/^[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}$/i.test(text)) return false;
   return true;
 }
 
@@ -178,9 +194,12 @@ function isSkipped(el: Element): boolean {
   return false;
 }
 
-/** UI chrome that is rarely worth translating and whose layout breaks easily. */
+/**
+ * UI chrome that is rarely worth translating and whose layout breaks easily. Buttons and
+ * role=button/tooltip are *not* here: sites put real content in them (headlines that expand
+ * a story, course outlines, wrappers that merely carry a tooltip).
+ */
 const SKIP_ROLES = new Set([
-  'button',
   'textbox',
   'searchbox',
   'combobox',
@@ -189,7 +208,6 @@ const SKIP_ROLES = new Set([
   'menubar',
   'tablist',
   'toolbar',
-  'tooltip',
 ]);
 
 /**
@@ -214,17 +232,40 @@ function isBlockDisplay(display: string, el: Element): boolean {
 
 /** Is `el` laid out as a block (so it can hold its own paragraph)? */
 export function isBlockLevel(el: Element): boolean {
-  return isBlockDisplay(defaultGetDisplay(el), el);
+  return isBlockDisplay(defaultGetStyle(el).display, el);
 }
 
-function defaultGetDisplay(el: Element): string {
+/** Screen-reader-only text and visibility:hidden boxes are not worth translating. */
+function isVisuallyHidden(cs: CSSStyleDeclaration): boolean {
+  if (cs.visibility === 'hidden' || cs.visibility === 'collapse') return true;
+  if (cs.position !== 'absolute' && cs.position !== 'fixed') return false;
+  if (parseFloat(cs.width) <= 1 || parseFloat(cs.height) <= 1) return true;
+  return /^rect\(\s*0(px)?[\s,]+0(px)?[\s,]+0(px)?[\s,]+0(px)?\s*\)$/.test(cs.clip);
+}
+
+function defaultGetStyle(el: Element): ElementStyle {
   const view = el.ownerDocument.defaultView;
-  if (!view) return '';
+  if (!view) return { display: '' };
   try {
-    return view.getComputedStyle(el).display;
+    const cs = view.getComputedStyle(el);
+    return { display: cs.display, flexDirection: cs.flexDirection, hidden: isVisuallyHidden(cs) };
   } catch {
-    return '';
+    return { display: '' };
   }
+}
+
+/** Children laid out side by side: an extra child would sit beside the text, not below it. */
+function isRowContainer(style: ElementStyle): boolean {
+  const d = style.display;
+  if (d === 'grid' || d === 'inline-grid') return true;
+  return (d === 'flex' || d === 'inline-flex') && !style.flexDirection?.startsWith('column');
+}
+
+/** Children stacked vertically, so a block placed after a child shows up below it. */
+function isFlowContainer(style: ElementStyle): boolean {
+  const d = style.display;
+  if (d === 'block' || d === 'flow-root' || d === 'list-item') return true;
+  return (d === 'flex' || d === 'inline-flex') && !!style.flexDirection?.startsWith('column');
 }
 
 interface Run {
@@ -236,14 +277,25 @@ interface Run {
 
 export function collectSegments(root: Element, opts: SegmenterOptions = {}): Segment[] {
   const minLength = opts.minLength ?? 2;
-  const displayCache = new Map<Element, string>();
-  const getDisplay = (el: Element): string => {
-    let d = displayCache.get(el);
-    if (d === undefined) {
-      d = (opts.getDisplay ?? defaultGetDisplay)(el);
-      displayCache.set(el, d);
+  const styleCache = new Map<Element, ElementStyle>();
+  const readStyle =
+    opts.getStyle ??
+    (opts.getDisplay ? (el: Element) => ({ display: opts.getDisplay!(el) }) : defaultGetStyle);
+  const getStyle = (el: Element): ElementStyle => {
+    let st = styleCache.get(el);
+    if (st === undefined) {
+      st = readStyle(el);
+      styleCache.set(el, st);
     }
-    return d;
+    return st;
+  };
+  const getDisplay = (el: Element): string => getStyle(el).display;
+  const placementFor = (block: Element, text: string): Segment['placement'] => {
+    const parent = block.parentElement;
+    if (!parent || block.localName === 'body' || isShortSnippet(text)) return 'inside';
+    return isRowContainer(getStyle(block)) && isFlowContainer(getStyle(parent))
+      ? 'after'
+      : 'inside';
   };
   const out: Segment[] = [];
 
@@ -260,12 +312,16 @@ export function collectSegments(root: Element, opts: SegmenterOptions = {}): Seg
       runCount++;
       const text = normalizeText(r.parts.join(''));
       if (r.textNodes.length > 0 && isTranslatableText(text, minLength)) {
+        const placement = placementFor(block, text);
         blockSegments.push({
           block,
           nodes: r.nodes,
           textNodes: r.textNodes,
           text,
-          fullBlock: r.textOnly,
+          // Translation-only mode hides the original inside the block; not possible when the
+          // translation lives outside it (the block may be a button the user still needs).
+          fullBlock: r.textOnly && placement === 'inside',
+          placement,
         });
       }
     };
@@ -276,7 +332,8 @@ export function collectSegments(root: Element, opts: SegmenterOptions = {}): Seg
       return run;
     };
 
-    const visit = (node: Node, top: Node): void => {
+    /** `flat`: inside an inline-flex/inline-grid element, whose children are only blockified. */
+    const visit = (node: Node, top: Node, flat = false): void => {
       if (node.nodeType === 3) {
         const data = (node as Text).data;
         if (/\S/.test(data)) {
@@ -296,9 +353,16 @@ export function collectSegments(root: Element, opts: SegmenterOptions = {}): Seg
         if (run) run.parts.push(BR_MARK);
         return;
       }
-      const display = getDisplay(el);
+      const style = getStyle(el);
+      const display = style.display;
       if (display === 'none') return;
-      const block = isBlockDisplay(display, el);
+      // Children of an inline-flex/inline-grid (e.g. a citation button inside a sentence)
+      // compute as blocks, but visually they stay part of the line: don't split the run there.
+      const block = !flat && isBlockDisplay(display, el);
+      const flatten = flat || display === 'inline-flex' || display === 'inline-grid';
+      // Screen-reader-only labels and invisible boxes: not translated, and not a paragraph break
+      // either (an sr-only span is position:absolute, which computes as display:block).
+      if (style.hidden) return;
       if (isSkipped(el)) {
         if (block) {
           flush();
@@ -330,7 +394,7 @@ export function collectSegments(root: Element, opts: SegmenterOptions = {}): Seg
         // Unknown inline element (custom element, label, etc.)
         current(top).textOnly = false;
       }
-      for (const child of Array.from(el.childNodes)) visit(child, top);
+      for (const child of Array.from(el.childNodes)) visit(child, top, flatten);
     };
 
     for (const child of Array.from(block.childNodes)) visit(child, child);
@@ -343,7 +407,7 @@ export function collectSegments(root: Element, opts: SegmenterOptions = {}): Seg
     }
   };
 
-  if (!isSkipped(root) && getDisplay(root) !== 'none') scanBlock(root);
+  if (!isSkipped(root) && getDisplay(root) !== 'none' && !getStyle(root).hidden) scanBlock(root);
   // Block segments are pushed after their nested blocks; restore document order.
   return out.sort((a, b) => {
     const x = a.textNodes[0]!;
