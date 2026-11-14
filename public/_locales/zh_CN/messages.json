@@ -1,0 +1,10 @@
+{
+  "extName": { "message": "Translate Now" },
+  "extDescription": {
+    "message": "使用你自己的 LLM API Key（OpenAI、OpenRouter、DeepSeek、通义千问、Gemini、Claude、Ollama）进行网页双语对照翻译与划词翻译。"
+  },
+  "cmdTogglePage": { "message": "翻译页面 / 显示原文" },
+  "cmdTranslateSelection": { "message": "翻译选中文本" },
+  "menuTogglePage": { "message": "翻译此页面 / 显示原文" },
+  "menuTranslateSelection": { "message": "翻译“%s”" }
+}
