@@ -32,14 +32,14 @@ PR (Conventional Commits title) ──squash──▶ main
    - `perf: …` → 性能优化, `revert: …` → 回滚, `deps: …` → 依赖更新
    - `docs`, `refactor`, `test`, `build`, `ci`, `chore`, `style` → no release on their own and hidden from the notes
    - `feat!: …` or a `BREAKING CHANGE:` footer → breaking change (a minor bump while the version is below 1.0)
-2. **Review the release PR.** After each merge, release-please opens or updates `chore: 发布 X.Y.Z`. It bumps `package.json` and `.release-please-manifest.json` and prepends the Chinese section to `CHANGELOG.md`. Edit the PR if the notes need polishing.
+2. **Review the release PR.** After each merge, release-please opens or updates `chore(main): 发布 X.Y.Z`. It bumps `package.json` and `.release-please-manifest.json` and prepends the Chinese section to `CHANGELOG.md`. Edit the PR if the notes need polishing.
 3. **Merge the release PR** when you want to ship. Everything after that is automatic. CI passing does not mean the stores approved the version; Chrome and Firefox reviews usually take from hours to a few days. Approved versions are published automatically.
 
 Notes:
 
 - PRs and tags created by release-please use `GITHUB_TOKEN`, so they do not trigger other workflows: the release PR has no CI run of its own, and the store release is called from `release-please.yml` instead of a tag-push trigger. `release.yml` runs the full test suite again on the tagged commit before packaging.
 - The repository must allow GitHub Actions to create pull requests (Settings → Actions → General → Workflow permissions), and squash merges must use the PR title.
-- If the Chrome item still has a version in review, the new upload cancels that review and submits the new version instead (`--chrome-cancel-pending`), because Chrome does not accept uploads while a review is pending. AMO queues versions without that restriction.
+- Chrome does not accept uploads while a version is in review (`NOT_UPDATEABLE: You may not edit or publish an item that is in review`). For an item that has been published before, the API reports the pending review and the new upload cancels it and submits the new version instead (`--chrome-cancel-pending`). The **first** review of a new item is not reported by the API, so it cannot be cancelled automatically: the Chrome job fails with that message, and you retry Chrome for the same tag once the review is finished (see [retries](#credential-dry-runs-and-retries)), or cancel the review in the dashboard first. AMO queues versions without that restriction.
 - To force a specific version, add a `Release-As: 1.0.0` footer to a commit on `main`.
 
 ## First listing
