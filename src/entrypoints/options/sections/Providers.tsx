@@ -1,13 +1,11 @@
 import { useEffect, useState } from 'react';
 import { HugeiconsIcon } from '@hugeicons/react';
-import {
-  Add01Icon,
-  CheckmarkCircle02Icon,
-  AlertCircleIcon,
-  LinkSquare02Icon,
-  ViewIcon,
-  ViewOffIcon,
-} from '@hugeicons/core-free-icons';
+import Add01Icon from '@hugeicons/core-free-icons/Add01Icon';
+import CheckmarkCircle02Icon from '@hugeicons/core-free-icons/CheckmarkCircle02Icon';
+import AlertCircleIcon from '@hugeicons/core-free-icons/AlertCircleIcon';
+import LinkSquare02Icon from '@hugeicons/core-free-icons/LinkSquare02Icon';
+import ViewIcon from '@hugeicons/core-free-icons/ViewIcon';
+import ViewOffIcon from '@hugeicons/core-free-icons/ViewOffIcon';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';

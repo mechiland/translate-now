@@ -373,3 +373,88 @@ test('popup renders and toggles translation for the active tab', async ({
   await expect(main).toHaveText(/Show original|显示原文/);
   await shot(popup, '06-popup');
 });
+
+test('popup shows a loading surface before its JavaScript is available', async ({
+  context,
+  sw,
+}) => {
+  const popup = await context.newPage();
+  let releaseScripts!: () => void;
+  const scriptsReady = new Promise<void>((resolve) => (releaseScripts = resolve));
+  await popup.route('**/*.js', async (route) => {
+    await scriptsReady;
+    await route.continue();
+  });
+
+  try {
+    await popup.goto(`chrome-extension://${new URL(sw.url()).host}/popup.html`, {
+      waitUntil: 'commit',
+    });
+    const loading = popup.getByRole('status', { name: /Translate Now/ });
+    await expect(loading).toBeVisible();
+    expect((await loading.boundingBox())!.height).toBeGreaterThan(100);
+  } finally {
+    releaseScripts();
+  }
+
+  await expect(popup.getByRole('heading', { name: 'Translate Now' })).toBeVisible();
+  await expect(popup.locator('.settings-btn')).toBeVisible();
+});
+
+test('popup keeps the loading surface visible until saved settings are ready', async ({
+  context,
+  sw,
+  server,
+}) => {
+  await configure(sw, baseSettings(server, { uiLang: 'en', targetLang: 'ja' }));
+  const popup = await context.newPage();
+  await popup.addInitScript(() => {
+    const get = chrome.storage.local.get.bind(chrome.storage.local);
+    const settingsReady = new Promise<void>((resolve) => {
+      Object.defineProperty(window, 'releasePopupSettings', { value: resolve });
+    });
+    Object.defineProperty(chrome.storage.local, 'get', {
+      value: async (keys: string | string[] | Record<string, unknown> | null = null) => {
+        Object.defineProperty(window, 'popupSettingsRequested', {
+          value: true,
+          configurable: true,
+        });
+        await settingsReady;
+        return get<Record<string, unknown>>(keys);
+      },
+    });
+  });
+
+  await popup.goto(`chrome-extension://${new URL(sw.url()).host}/popup.html`);
+  await popup.waitForFunction(() => Reflect.get(window, 'popupSettingsRequested'));
+  await expect(popup.getByRole('status', { name: /Translate Now/ })).toBeVisible();
+  await expect(popup.locator('#target')).toHaveCount(0);
+
+  await popup.evaluate(() => Reflect.get(window, 'releasePopupSettings')());
+  await expect(popup.locator('#target')).toContainText('日本語');
+  await expect(popup.locator('.settings-btn')).toBeVisible();
+  await expect(popup.getByRole('status', { name: /Translate Now/ })).toHaveCount(0);
+
+  await popup.locator('#target').click();
+  await popup.getByRole('option', { name: 'Français', exact: true }).click();
+  await expect
+    .poll(() =>
+      sw.evaluate(async () => {
+        const { settings } = await chrome.storage.local.get<{ settings: { targetLang: string } }>(
+          'settings',
+        );
+        return settings.targetLang;
+      }),
+    )
+    .toBe('fr');
+});
+
+test('popup can retry when its application fails to load', async ({ context, sw }) => {
+  const popup = await context.newPage();
+  await popup.route('**/chunks/render-*.js', (route) => route.abort());
+  await popup.goto(`chrome-extension://${new URL(sw.url()).host}/popup.html`);
+  await expect(popup.getByRole('alert')).toBeVisible();
+  await popup.unroute('**/chunks/render-*.js');
+  await popup.getByRole('button', { name: /Retry|重试/ }).click();
+  await expect(popup.locator('.settings-btn')).toBeVisible();
+});

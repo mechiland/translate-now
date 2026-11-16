@@ -1,16 +1,14 @@
 import { useEffect, useState } from 'react';
 import { browser } from 'wxt/browser';
 import { HugeiconsIcon, type IconSvgElement } from '@hugeicons/react';
-import {
-  AiNetworkIcon,
-  CursorTextIcon,
-  Database01Icon,
-  InformationCircleIcon,
-  KeyboardIcon,
-  LanguageSquareIcon,
-  PaintBrush04Icon,
-  WebDesign01Icon,
-} from '@hugeicons/core-free-icons';
+import AiNetworkIcon from '@hugeicons/core-free-icons/AiNetworkIcon';
+import CursorTextIcon from '@hugeicons/core-free-icons/CursorTextIcon';
+import Database01Icon from '@hugeicons/core-free-icons/Database01Icon';
+import InformationCircleIcon from '@hugeicons/core-free-icons/InformationCircleIcon';
+import KeyboardIcon from '@hugeicons/core-free-icons/KeyboardIcon';
+import LanguageSquareIcon from '@hugeicons/core-free-icons/LanguageSquareIcon';
+import PaintBrush04Icon from '@hugeicons/core-free-icons/PaintBrush04Icon';
+import WebDesign01Icon from '@hugeicons/core-free-icons/WebDesign01Icon';
 import {
   Sidebar,
   SidebarContent,
