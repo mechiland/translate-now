@@ -8,14 +8,12 @@ import { cn } from 'cn';
 
 import { Button } from '@/components/ui/button';
 import { HugeiconsIcon } from '@hugeicons/react';
-import {
-  Alert02Icon,
-  Cancel01Icon,
-  CancelCircleIcon,
-  CheckmarkCircle02Icon,
-  InformationCircleIcon,
-  Loading03Icon,
-} from '@hugeicons/core-free-icons';
+import Alert02Icon from '@hugeicons/core-free-icons/Alert02Icon';
+import Cancel01Icon from '@hugeicons/core-free-icons/Cancel01Icon';
+import CancelCircleIcon from '@hugeicons/core-free-icons/CancelCircleIcon';
+import CheckmarkCircle02Icon from '@hugeicons/core-free-icons/CheckmarkCircle02Icon';
+import InformationCircleIcon from '@hugeicons/core-free-icons/InformationCircleIcon';
+import Loading03Icon from '@hugeicons/core-free-icons/Loading03Icon';
 
 const toast = ToastPrimitive.createToastManager();
 

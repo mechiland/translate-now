@@ -6,7 +6,37 @@
     <title>Translate Now</title>
   </head>
   <body>
+    <!-- Keep the popup visible while its application code and settings load. -->
+    <div id="popup-loading" role="status" aria-label="Loading Translate Now" aria-busy="true">
+      <h1>Translate Now</h1>
+      <div class="popup-placeholders" aria-hidden="true">
+        <div data-slot="skeleton" class="popup-placeholder-action"></div>
+        <div data-slot="skeleton" class="popup-placeholder-title"></div>
+        <div class="popup-placeholder-row">
+          <span data-slot="skeleton"></span><span data-slot="skeleton"></span>
+        </div>
+        <div class="popup-placeholder-row">
+          <span data-slot="skeleton"></span><span data-slot="skeleton"></span>
+        </div>
+        <div class="popup-placeholder-row">
+          <span data-slot="skeleton"></span><span data-slot="skeleton"></span>
+        </div>
+        <div data-slot="skeleton" class="popup-placeholder-title"></div>
+        <div class="popup-placeholder-row">
+          <span data-slot="skeleton"></span><span data-slot="skeleton"></span>
+        </div>
+        <div class="popup-placeholder-row">
+          <span data-slot="skeleton"></span><span data-slot="skeleton"></span>
+        </div>
+        <div class="popup-placeholder-footer">
+          <div class="popup-placeholder-row">
+            <span data-slot="skeleton"></span><span data-slot="skeleton"></span>
+          </div>
+          <div class="popup-placeholder-row"><span data-slot="skeleton"></span></div>
+        </div>
+      </div>
+    </div>
     <div id="root"></div>
-    <script type="module" src="./main.tsx"></script>
+    <script type="module" src="./main.ts"></script>
   </body>
 </html>

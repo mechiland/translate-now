@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { browser } from 'wxt/browser';
 import { HugeiconsIcon } from '@hugeicons/react';
-import { LinkSquare02Icon } from '@hugeicons/core-free-icons';
+import LinkSquare02Icon from '@hugeicons/core-free-icons/LinkSquare02Icon';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Field, FieldDescription, FieldLabel } from '@/components/ui/field';

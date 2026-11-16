@@ -1,18 +1,16 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useState, type ReactNode } from 'react';
 import { cn } from 'cn';
 import { browser } from 'wxt/browser';
 import { HugeiconsIcon, type IconSvgElement } from '@hugeicons/react';
-import {
-  Alert02Icon,
-  AiNetworkIcon,
-  Cancel01Icon,
-  CursorTextIcon,
-  LanguageSquareIcon,
-  Layout01Icon,
-  PaintBrush04Icon,
-  RepeatIcon,
-  Settings02Icon,
-} from '@hugeicons/core-free-icons';
+import Alert02Icon from '@hugeicons/core-free-icons/Alert02Icon';
+import AiNetworkIcon from '@hugeicons/core-free-icons/AiNetworkIcon';
+import Cancel01Icon from '@hugeicons/core-free-icons/Cancel01Icon';
+import CursorTextIcon from '@hugeicons/core-free-icons/CursorTextIcon';
+import LanguageSquareIcon from '@hugeicons/core-free-icons/LanguageSquareIcon';
+import Layout01Icon from '@hugeicons/core-free-icons/Layout01Icon';
+import PaintBrush04Icon from '@hugeicons/core-free-icons/PaintBrush04Icon';
+import RepeatIcon from '@hugeicons/core-free-icons/RepeatIcon';
+import Settings02Icon from '@hugeicons/core-free-icons/Settings02Icon';
 import { Alert, AlertAction, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Item, ItemActions, ItemContent, ItemMedia, ItemTitle } from '@/components/ui/item';
@@ -131,6 +129,12 @@ function Popup() {
     const timer = setInterval(() => void refresh(tabId), 700);
     return () => clearInterval(timer);
   }, [tabId, state?.translated, refresh]);
+
+  // Swap the static loading surface for the fully configured UI in the same
+  // frame, after the theme's portal has initialized during the settings read.
+  useLayoutEffect(() => {
+    if (settings) document.getElementById('popup-loading')?.remove();
+  }, [settings]);
 
   if (!settings) return null;
   const t = createT(settings.uiLang);

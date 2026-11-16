@@ -1,0 +1,83 @@
+/* The loading surface must not depend on Tailwind, React, or the full theme. */
+:root {
+  color-scheme: light dark;
+}
+
+body {
+  width: 360px;
+  margin: 0;
+}
+
+#popup-loading {
+  --background: white;
+  --foreground: #202020;
+  --muted: #f0f0f3;
+  box-sizing: border-box;
+  padding: 16px 20px;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+#popup-loading h1 {
+  margin: 0 0 16px;
+  font-size: 20px;
+  font-weight: 400;
+  line-height: 28px;
+}
+
+#popup-loading button {
+  padding: 8px 16px;
+  border: 0;
+  border-radius: 4px;
+  background: var(--muted);
+  color: var(--foreground);
+  font: inherit;
+  cursor: pointer;
+}
+
+/* Static equivalents of Skeleton's data-slot, without loading React first. */
+#popup-loading [data-slot='skeleton'] {
+  display: block;
+  height: 14px;
+  border-radius: 4px;
+  background: var(--muted);
+}
+
+#popup-loading .popup-placeholder-action {
+  height: 40px;
+  margin-bottom: 20px;
+}
+
+#popup-loading .popup-placeholder-title {
+  width: 80px;
+  height: 12px;
+  margin-block: 10px;
+}
+
+.popup-placeholder-row {
+  display: flex;
+  height: 48px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.popup-placeholder-row > :first-child {
+  width: 112px;
+}
+
+.popup-placeholder-row > :nth-child(2) {
+  width: 96px;
+}
+
+.popup-placeholder-footer {
+  margin-top: 12px;
+}
+
+@media (prefers-color-scheme: dark) {
+  #popup-loading {
+    --background: #111113;
+    --foreground: #eeeef0;
+    --muted: #232326;
+  }
+}
