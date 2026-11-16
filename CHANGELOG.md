@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.2](https://github.com/mechiland/translate-now/compare/v0.3.1...v0.3.2) (2026-11-16)
+
+
+### Bug Fixes
+
+* drop provider brand list from store descriptions ([#11](https://github.com/mechiland/translate-now/issues/11)) ([54c8ce9](https://github.com/mechiland/translate-now/commit/54c8ce9f9c93b4667495092ccbf0ded1ac2a5e58))
+
 ## [0.3.1](https://github.com/mechiland/translate-now/compare/v0.3.0...v0.3.1) (2026-11-14)
 
 
