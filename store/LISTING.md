@@ -1,5 +1,10 @@
 # Store listing copy
 
+Rules for every store-facing text (manifest name/description in `public/_locales`, the descriptions below, and anything pasted into the Chrome or AMO dashboards):
+
+- Do not list third-party product or brand names (OpenAI, Claude, Gemini, DeepSeek, Ollama, …). Chrome rejected the first submission for keyword spam over such a list. Say "popular AI providers", "a local model server" or "any OpenAI-compatible endpoint" instead; provider names belong in the README and the settings UI.
+- `tests/release/store-copy.test.mjs` enforces this for the manifest descriptions and this file.
+
 ## Name
 
 Translate Now
@@ -15,13 +20,13 @@ Read the web in two languages with Translate Now, a free and open-source browser
 - Translate web pages paragraph by paragraph, with translations below the originals or in translation-only mode.
 - Select text for a floating translation card, or use the context menu and keyboard shortcuts.
 - Point at a paragraph and tap Ctrl to translate just that paragraph.
-- Connect OpenAI, OpenRouter, DeepSeek, Gemini, Claude, DashScope, local Ollama, or an OpenAI-compatible endpoint.
+- Use built-in presets for popular AI providers, a local model server, or any OpenAI-compatible endpoint.
 - Save multiple provider profiles, choose translation styles, and add your own glossary.
 - Set per-site rules and optionally translate foreign-language pages automatically.
 - Translate visible content first and cache results locally to reduce repeated API requests.
 - Choose an English or Chinese interface, dark mode, and translation styles.
 
-Setup: open the extension settings, select a provider, enter your own API key and model, save, and test the connection. Provider usage may incur charges under your provider's plan. A local Ollama server can be used without a paid API key. The extension does not include a hosted translation service.
+Setup: open the extension settings, select a provider, enter your own API key and model, save, and test the connection. Provider usage may incur charges under your provider's plan. A local model server can be used without a paid API key. The extension does not include a hosted translation service.
 
 Privacy: page text, title, and domain go directly to the API endpoint you configure. Your key authenticates those requests. Settings and keys stay in local browser storage; cached translations stay on your device. No developer-operated server, analytics, ads, or telemetry.
 
@@ -36,11 +41,11 @@ Translate Now 是免费开源的网页双语翻译扩展，使用你自己的 AP
 - 网页逐段双语翻译或仅显示译文，滚动时继续翻译。
 - 划词翻译浮窗、右键菜单、Alt+A / Alt+S 快捷键。
 - 鼠标停在段落上轻按 Ctrl，只翻译这一段。
-- 支持 OpenAI、OpenRouter、DeepSeek、Gemini、Claude、通义千问、本地 Ollama 及 OpenAI 兼容服务。
+- 内置常用 AI 服务预设，也支持本地模型服务和任意 OpenAI 兼容接口。
 - 多服务配置、自定义翻译风格、术语表、站点规则和可选自动翻译。
 - 本地译文缓存、中英文界面、深色模式及多种译文样式。
 
-安装后进入设置，填写自己的 API Key 和模型并测试连接。模型调用费用由服务商收取；使用本地 Ollama 可以不填写付费 API Key。待翻译文本、页面标题和域名直接发送到你配置的服务商。扩展无开发者服务器、广告或遥测；设置和密钥仅保存在本机。
+安装后进入设置，填写自己的 API Key 和模型并测试连接。模型调用费用由服务商收取；使用本地模型服务可以不填写付费 API Key。待翻译文本、页面标题和域名直接发送到你配置的服务商。扩展无开发者服务器、广告或遥测；设置和密钥仅保存在本机。
 
 ## Chrome privacy practices and permission justifications
 
