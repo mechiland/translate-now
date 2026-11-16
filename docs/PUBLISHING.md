@@ -8,6 +8,14 @@
 - Chrome publishing project: `translate-now-releases`; service account: `translate-now-publisher@translate-now-releases.iam.gserviceaccount.com`. The service account is only used for the store API and has no Cloud project roles.
 - Reusable listing screenshots live in `store/screenshots/` (taken with a local demo article and sample credentials). Listing copy is in `store/LISTING.md`.
 
+## Store listing text
+
+The store API only uploads the package. The listing (detailed description, screenshots, privacy answers) lives in each dashboard and has to be edited there by hand; the manifest `description` from `public/_locales` is part of the package and becomes the Chrome summary.
+
+- **Never list third-party brand names in store-facing text** (manifest name/description, listing descriptions in any language). Chrome rejected `0.1.1` for keyword spam ("Yellow Argon") over `(OpenAI, OpenRouter, DeepSeek, Qwen, Gemini, Claude, Ollama)`. Describe providers generically; names stay in the README and settings UI. `tests/release/store-copy.test.mjs` checks the manifest and `store/LISTING.md`, but not what is pasted into the dashboards, so paste only from `store/LISTING.md`.
+- When the listing copy changes, update **both dashboards and every locale** (English and Chinese) _before_ the next version is submitted. A Chrome submission reviews the dashboard listing together with the package, so stale dashboard text gets the new version rejected too.
+- After a rejection, fix the cause, then ship a new version. Do not retry an older tag whose package still carries the rejected text.
+
 ## How a release happens
 
 ```
