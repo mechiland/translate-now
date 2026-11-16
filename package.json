@@ -1,6 +1,6 @@
 {
   "name": "translate-now",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "private": true,
   "description": "Bring-your-own-key bilingual web page translator powered by LLMs",
   "type": "module",

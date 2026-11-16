@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.3](https://github.com/mechiland/translate-now/compare/v0.3.2...v0.3.3) (2026-11-16)
+
+
+### Performance Improvements
+
+* speed up extension popup startup ([#13](https://github.com/mechiland/translate-now/issues/13)) ([63fffbb](https://github.com/mechiland/translate-now/commit/63fffbbf54adb33388cdb40cbd1b6541e2858c78))
+
 ## [0.3.2](https://github.com/mechiland/translate-now/compare/v0.3.1...v0.3.2) (2026-11-16)
 
 
