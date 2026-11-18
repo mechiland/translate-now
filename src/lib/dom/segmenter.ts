@@ -132,8 +132,21 @@ export interface Segment {
   nodes: Node[];
   /** Text nodes contributing to the run (first one is used as identity). */
   textNodes: Text[];
-  /** Normalized text sent for translation. */
+  /** Normalized plain text (used for language detection, length checks, and short-snippet detection). */
   text: string;
+  /**
+   * Text sent for translation. Same as `text` unless inline `<a id="N">...</a>` markers are
+   * embedded to preserve links inside the segment.
+   */
+  payload: string;
+  /** Inline `<a href>` elements referenced by `<a id="1">...</a>`..`<a id="K">...</a>` in `payload`. */
+  links: HTMLAnchorElement[];
+  /**
+   * Set when a single `<a href>` covers all text in the segment (and the translation is not
+   * already inserted inside a link). In this case `payload === text` and the translated text
+   * is wrapped in a clone of this link.
+   */
+  wrapLink?: HTMLAnchorElement;
   /** True when this run is the only content of the block and the block holds only text-level elements. */
   fullBlock: boolean;
   /**
@@ -268,11 +281,84 @@ function isFlowContainer(style: ElementStyle): boolean {
   return (d === 'flex' || d === 'inline-flex') && !!style.flexDirection?.startsWith('column');
 }
 
+interface RunPiece {
+  text: string;
+  link?: HTMLAnchorElement;
+}
+
 interface Run {
   nodes: Node[];
-  parts: string[];
+  pieces: RunPiece[];
   textNodes: Text[];
   textOnly: boolean;
+}
+
+function isLinkElement(el: Element): el is HTMLAnchorElement {
+  return el.localName === 'a' && el.hasAttribute('href');
+}
+
+function buildLinkPayload(
+  pieces: RunPiece[],
+  plainText: string,
+  alreadyInLink: boolean,
+): { payload: string; links: HTMLAnchorElement[]; wrapLink?: HTMLAnchorElement } {
+  if (alreadyInLink) return { payload: plainText, links: [] };
+
+  let hasAnyLink = false;
+  let soleLink: HTMLAnchorElement | undefined;
+  let allSameLink = true;
+  for (const p of pieces) {
+    if (!/[^\s\uE000]/.test(p.text)) continue;
+    if (p.link) {
+      hasAnyLink = true;
+      if (soleLink === undefined) soleLink = p.link;
+      else if (soleLink !== p.link) allSameLink = false;
+    } else {
+      allSameLink = false;
+    }
+  }
+  if (!hasAnyLink) return { payload: plainText, links: [] };
+  if (allSameLink && soleLink) return { payload: plainText, links: [], wrapLink: soleLink };
+
+  // Merge consecutive pieces sharing the same link element so nested inline tags stay one marker.
+  const groups: { link?: HTMLAnchorElement; raw: string }[] = [];
+  for (const p of pieces) {
+    const prev = groups[groups.length - 1];
+    if (prev && prev.link === p.link) prev.raw += p.text;
+    else groups.push({ link: p.link, raw: p.text });
+  }
+
+  const links: HTMLAnchorElement[] = [];
+  const out: string[] = [];
+  for (const g of groups) {
+    if (!g.link) {
+      out.push(g.raw);
+      continue;
+    }
+    const leadBr = /^\s*\uE000/.test(g.raw);
+    const leadSpace = !leadBr && /^\s/.test(g.raw);
+    const trailBr = /\uE000\s*$/.test(g.raw);
+    const trailSpace = !trailBr && /\s$/.test(g.raw);
+    const inner = g.raw
+      .replace(/\s+/g, ' ')
+      .replace(/\s*\uE000\s*/g, BR_MARK)
+      .replace(/^(?:\uE000| )+|(?:\uE000| )+$/g, '');
+    if (!inner) {
+      out.push(g.raw);
+      continue;
+    }
+    links.push(g.link);
+    const id = links.length;
+    if (leadBr) out.push(BR_MARK);
+    else if (leadSpace) out.push(' ');
+    out.push(`<a id="${id}">${inner}</a>`);
+    if (trailBr) out.push(BR_MARK);
+    else if (trailSpace) out.push(' ');
+  }
+  return {
+    payload: links.length > 0 ? normalizeText(out.join('')) : plainText,
+    links,
+  };
 }
 
 export function collectSegments(root: Element, opts: SegmenterOptions = {}): Segment[] {
@@ -304,20 +390,27 @@ export function collectSegments(root: Element, opts: SegmenterOptions = {}): Seg
     let runCount = 0;
     let interrupted = false;
     const blockSegments: Segment[] = [];
+    const blockLink = isLinkElement(block) ? block : undefined;
 
     const flush = () => {
       if (!run) return;
       const r: Run = run;
       run = null;
       runCount++;
-      const text = normalizeText(r.parts.join(''));
+      const text = normalizeText(r.pieces.map((p) => p.text).join(''));
       if (r.textNodes.length > 0 && isTranslatableText(text, minLength)) {
         const placement = placementFor(block, text);
+        const insertionParent = placement === 'after' ? block.parentElement : block;
+        const alreadyInLink = Boolean(insertionParent?.closest('a[href]'));
+        const { payload, links, wrapLink } = buildLinkPayload(r.pieces, text, alreadyInLink);
         blockSegments.push({
           block,
           nodes: r.nodes,
           textNodes: r.textNodes,
           text,
+          payload,
+          links,
+          wrapLink,
           // Translation-only mode hides the original inside the block; not possible when the
           // translation lives outside it (the block may be a button the user still needs).
           fullBlock: r.textOnly && placement === 'inside',
@@ -327,21 +420,26 @@ export function collectSegments(root: Element, opts: SegmenterOptions = {}): Seg
     };
 
     const current = (top: Node): Run => {
-      if (!run) run = { nodes: [], parts: [], textNodes: [], textOnly: true };
+      if (!run) run = { nodes: [], pieces: [], textNodes: [], textOnly: true };
       if (run.nodes[run.nodes.length - 1] !== top) run.nodes.push(top);
       return run;
     };
 
     /** `flat`: inside an inline-flex/inline-grid element, whose children are only blockified. */
-    const visit = (node: Node, top: Node, flat = false): void => {
+    const visit = (
+      node: Node,
+      top: Node,
+      flat = false,
+      activeLink: HTMLAnchorElement | undefined = undefined,
+    ): void => {
       if (node.nodeType === 3) {
         const data = (node as Text).data;
         if (/\S/.test(data)) {
           const r = current(top);
-          r.parts.push(data);
+          r.pieces.push({ text: data, link: activeLink });
           r.textNodes.push(node as Text);
         } else if (run) {
-          run.parts.push(' ');
+          run.pieces.push({ text: ' ', link: activeLink });
         }
         return;
       }
@@ -350,7 +448,7 @@ export function collectSegments(root: Element, opts: SegmenterOptions = {}): Seg
       const tag = el.localName;
       if (tag === TRANSLATION_TAG || tag === UI_TAG) return;
       if (tag === 'br') {
-        if (run) run.parts.push(BR_MARK);
+        if (run) run.pieces.push({ text: BR_MARK, link: activeLink });
         return;
       }
       const style = getStyle(el);
@@ -375,7 +473,16 @@ export function collectSegments(root: Element, opts: SegmenterOptions = {}): Seg
           el.getAttribute('translate') === 'no';
         if (keepText) {
           const t = el.textContent ?? '';
-          if (/\S/.test(t)) current(top).parts.push(t);
+          if (/\S/.test(t)) {
+            let link = isLinkElement(el) ? el : activeLink;
+            if (!link) {
+              const anchors = el.querySelectorAll('a[href]');
+              if (anchors.length === 1 && anchors[0]!.textContent?.trim() === t.trim()) {
+                link = anchors[0] as HTMLAnchorElement;
+              }
+            }
+            current(top).pieces.push({ text: t, link });
+          }
         } else if (run) {
           // An inline icon/image/button inside the run: keep the run, but the block isn't text-only.
           run.textOnly = false;
@@ -394,10 +501,11 @@ export function collectSegments(root: Element, opts: SegmenterOptions = {}): Seg
         // Unknown inline element (custom element, label, etc.)
         current(top).textOnly = false;
       }
-      for (const child of Array.from(el.childNodes)) visit(child, top, flatten);
+      const nextLink = isLinkElement(el) ? el : activeLink;
+      for (const child of Array.from(el.childNodes)) visit(child, top, flatten, nextLink);
     };
 
-    for (const child of Array.from(block.childNodes)) visit(child, child);
+    for (const child of Array.from(block.childNodes)) visit(child, child, false, blockLink);
     flush();
 
     const sole = runCount === 1 && !interrupted;

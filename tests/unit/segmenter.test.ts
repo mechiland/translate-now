@@ -234,6 +234,62 @@ describe('buttons and widget roles', () => {
       <p style="visibility:hidden">Invisible paragraph text</p>`);
     expect(s.map((x) => x.text)).toEqual(['The ground stop began at 3:54 p.m.3']);
   });
+
+  it('captures wrapLink when a flex-row anchor places its translation after itself', () => {
+    const s = styled(`
+      <div><a href="/story" style="display:flex">A very long headline placed directly inside a flex anchor element</a></div>`);
+    expect(s).toHaveLength(1);
+    expect(s[0]!.placement).toBe('after');
+    expect(s[0]!.payload).toBe('A very long headline placed directly inside a flex anchor element');
+    expect(s[0]!.wrapLink?.getAttribute('href')).toBe('/story');
+    expect(s[0]!.links).toEqual([]);
+  });
+});
+
+describe('links', () => {
+  it('uses wrapLink without markers when a single link covers the whole segment', () => {
+    const s = segs('<h2>  <a href="/post">My great post</a>  </h2>');
+    expect(s).toHaveLength(1);
+    expect(s[0]!.text).toBe('My great post');
+    expect(s[0]!.payload).toBe('My great post');
+    expect(s[0]!.links).toEqual([]);
+    expect(s[0]!.wrapLink?.getAttribute('href')).toBe('/post');
+  });
+
+  it('embeds numbered markers for partial or multiple inline links and keeps plain text clean', () => {
+    const s = segs(
+      '<p>Read<a href="/a">  <b>API</b>   <em>guide</em> </a> and <a href="/b">examples</a>.</p>',
+    );
+    expect(s).toHaveLength(1);
+    expect(s[0]!.text).toBe('Read API guide and examples.');
+    expect(s[0]!.payload).toBe('Read <a id="1">API guide</a> and <a id="2">examples</a>.');
+    expect(s[0]!.wrapLink).toBeUndefined();
+    expect(s[0]!.links.map((a) => a.getAttribute('href'))).toEqual(['/a', '/b']);
+  });
+
+  it('preserves line breaks inside inline links and links around code or notranslate text', () => {
+    const s = segs(
+      '<p>Call <a href="/fetch"><code>fetch()</code></a> or <a href="/wxt" class="notranslate">WXT</a><br><a href="/multi">Line 1<br>Line 2</a></p>',
+    );
+    expect(s).toHaveLength(1);
+    expect(s[0]!.payload).toBe(
+      'Call <a id="1">fetch()</a> or <a id="2">WXT</a>\n<a id="3">Line 1\nLine 2</a>',
+    );
+    expect(s[0]!.links.map((a) => a.getAttribute('href'))).toEqual(['/fetch', '/wxt', '/multi']);
+  });
+
+  it('ignores anchors without href and avoids double-linking blocks already inside an anchor', () => {
+    const s = segs(
+      '<p>See <a id="sec">section one</a> here.</p><a href="/card"><div>Card heading</div></a>',
+    );
+    expect(s).toHaveLength(2);
+    expect(s[0]!.payload).toBe('See section one here.');
+    expect(s[0]!.links).toEqual([]);
+    expect(s[0]!.wrapLink).toBeUndefined();
+    expect(s[1]!.payload).toBe('Card heading');
+    expect(s[1]!.links).toEqual([]);
+    expect(s[1]!.wrapLink).toBeUndefined();
+  });
 });
 
 describe('isShortSnippet', () => {
