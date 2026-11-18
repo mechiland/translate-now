@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.4](https://github.com/mechiland/translate-now/compare/v0.3.3...v0.3.4) (2026-11-18)
+
+
+### Bug Fixes
+
+* preserve links in translated text ([#15](https://github.com/mechiland/translate-now/issues/15)) ([496b0ac](https://github.com/mechiland/translate-now/commit/496b0ac5697d2d8fa68f79721905b605e0dcc623))
+
 ## [0.3.3](https://github.com/mechiland/translate-now/compare/v0.3.2...v0.3.3) (2026-11-16)
 
 
