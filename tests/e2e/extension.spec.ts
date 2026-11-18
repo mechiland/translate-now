@@ -59,8 +59,12 @@ test('translates the page bilingually, skips code/notranslate/target-language te
   await expect(translationOf(page, 'p2')).toHaveText(
     '[ZH] Simple tools are often the most useful ones, as this link shows.',
   );
+  await expect(translationOf(page, 'p2').locator('a')).toHaveAttribute('href', '#');
+  await expect(translationOf(page, 'p2').locator('a')).toHaveText('this link');
   await expect(translationOf(page, 'title')).toHaveText('[ZH] A simple test article');
   await expect(translationOf(page, 'li1')).toHaveText('[ZH] First list item text');
+  await expect(translationOf(page, 'li3').locator('a')).toHaveAttribute('href', '#linked-item');
+  await expect(translationOf(page, 'li3').locator('a')).toHaveText('[ZH] Linked list item text');
   // Original text is still visible in bilingual mode.
   await expect(page.locator('#p1')).toContainText('The quick brown fox');
 
@@ -100,6 +104,12 @@ test('translation-only mode hides the original; toggling again restores the page
   const margin = await page.locator('#p2').evaluate((el) => getComputedStyle(el).marginTop);
   expect(margin).toBe('16px');
   await expect(page.locator('#p2 b')).toBeHidden();
+  await expect(page.locator('#p2 > a')).toBeHidden();
+  await expect(translationOf(page, 'p2').locator('a')).toBeVisible();
+  await expect(translationOf(page, 'p2').locator('a')).toHaveAttribute('href', '#');
+  await expect(translationOf(page, 'li3').locator('a')).toBeVisible();
+  await translationOf(page, 'li3').locator('a').click();
+  await expect(page).toHaveURL(/#linked-item$/);
   const fs1 = await translationOf(page, 'p1').evaluate((el) => getComputedStyle(el).fontSize);
   expect(fs1).toBe('16px');
   await shot(page, '02-translation-only');

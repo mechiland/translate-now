@@ -27,6 +27,7 @@ describe('prompts', () => {
     expect(p).toContain('Website: example.com');
     expect(p).toContain('Page title: My Page');
     expect(p).toContain('<seg id="N">');
+    expect(p).toContain('<a id="N">');
   });
 
   it('omits glossary section when empty', () => {

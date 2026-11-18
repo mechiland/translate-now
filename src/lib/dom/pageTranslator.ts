@@ -3,6 +3,7 @@ import type { DisplayMode, TranslationTheme } from '../settings/schema';
 import { createBatches } from '../translate/batching';
 import type { SegmentResult } from '../translate/translator';
 import { shouldSkipLanguage, type LanguageDetector, detectLanguage } from './detect';
+import { renderTranslatedContent } from './links';
 import { PAGE_CSS } from './pageStyles';
 import {
   collectSegments,
@@ -166,7 +167,7 @@ export class PageTranslator {
     const seg = this.segmentAt(target);
     if (!seg) return 'none';
     const existing = this.units.get(seg.textNodes[0]!);
-    if (existing && existing.block === seg.block && existing.text === seg.text) {
+    if (existing && existing.block === seg.block && existing.payload === seg.payload) {
       return this.togglePinned(existing);
     }
     if (existing) this.removeUnit(existing);
@@ -178,7 +179,7 @@ export class PageTranslator {
     const unit: Unit = { ...seg, status: 'idle', gen: 0 };
     this.addUnit(unit);
     this.pinned.add(unit);
-    const cached = this.memory.get(unit.text);
+    const cached = this.memory.get(unit.payload);
     if (cached !== undefined) this.renderDone(unit, cached);
     else this.enqueue(unit);
     this.deps.onChange?.();
@@ -249,11 +250,17 @@ export class PageTranslator {
     for (const seg of segments) {
       const key = seg.textNodes[0]!;
       const existing = this.units.get(key);
-      if (existing && existing.block === seg.block && existing.text === seg.text) {
+      if (existing && existing.block === seg.block && existing.payload === seg.payload) {
         existing.nodes = seg.nodes;
         existing.textNodes = seg.textNodes;
         existing.fullBlock = seg.fullBlock;
         existing.placement = seg.placement;
+        if (!sameLinks(existing, seg)) {
+          existing.links = seg.links;
+          existing.wrapLink = seg.wrapLink;
+          const cached = this.memory.get(existing.payload);
+          if (existing.status === 'done' && cached !== undefined) this.renderDone(existing, cached);
+        }
         seen.add(existing);
         continue;
       }
@@ -264,7 +271,7 @@ export class PageTranslator {
       this.io?.unobserve(seg.block);
       this.io?.observe(seg.block);
       seen.add(unit);
-      const cached = this.memory.get(unit.text);
+      const cached = this.memory.get(unit.payload);
       if (cached !== undefined) this.renderDone(unit, cached);
       else if (!this.io) this.enqueue(unit);
     }
@@ -383,7 +390,7 @@ export class PageTranslator {
     this.deps.onChange?.();
 
     const batches = createBatches(
-      todo.map((u) => ({ text: u.text, data: u })),
+      todo.map((u) => ({ text: u.payload, data: u })),
       cfg.maxChars,
       cfg.maxSegments,
     );
@@ -404,7 +411,7 @@ export class PageTranslator {
           if (!fresh(u)) return;
           const r = results[i];
           if (r?.ok) {
-            this.memory.set(u.text, r.text);
+            this.memory.set(u.payload, r.text);
             this.renderDone(u, r.text);
           } else if (r && r.error.kind === 'aborted') {
             this.resetUnit(u);
@@ -452,7 +459,12 @@ export class PageTranslator {
     el.setAttribute('lang', this.deps.getConfig().targetLang);
     const span = this.doc.createElement('span');
     span.className = 'tn-text';
-    span.textContent = text;
+    renderTranslatedContent(this.doc, span, text, {
+      plainText: unit.text,
+      block: unit.block,
+      links: unit.links,
+      wrapLink: unit.wrapLink,
+    });
     el.replaceChildren(span);
     if (unit.fullBlock) {
       const view = this.doc.defaultView;
@@ -489,6 +501,11 @@ export class PageTranslator {
       this.enqueue(unit);
     };
   }
+}
+
+function sameLinks(a: Segment, b: Segment): boolean {
+  if (a.wrapLink !== b.wrapLink || a.links.length !== b.links.length) return false;
+  return a.links.every((el, i) => el === b.links[i]);
 }
 
 function closestTranslation(node: Node): HTMLElement | undefined {
