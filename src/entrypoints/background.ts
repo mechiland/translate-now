@@ -1,6 +1,13 @@
 import { browser, type Browser } from 'wxt/browser';
 import { defineBackground } from 'wxt/utils/define-background';
-import type { BackgroundMessage, BackgroundResponses } from '@/lib/messaging';
+import {
+  isViewerUrl,
+  sendToPage,
+  type BackgroundMessage,
+  type BackgroundResponses,
+  type ContentMessage,
+} from '@/lib/messaging';
+import { isLikelyPdfUrl, viewerPath } from '@/lib/pdf/url';
 import { chat, listModels } from '@/lib/providers/client';
 import { toProviderError } from '@/lib/providers/errors';
 import { loadSettings } from '@/lib/settings/storage';
@@ -103,12 +110,21 @@ export default defineBackground(() => {
       case 'options:open':
         await browser.runtime.openOptionsPage();
         return { ok: true };
+      case 'pdf:open':
+        if (tabId !== undefined) await openViewer(tabId, msg.url);
+        return { ok: true };
     }
+  }
+
+  async function openViewer(tabId: number, url: string) {
+    await browser.tabs.update(tabId, { url: browser.runtime.getURL(viewerPath(url)) });
   }
 
   browser.runtime.onMessage.addListener((message: unknown, sender, sendResponse) => {
     const msg = message as BackgroundMessage;
     if (!msg || typeof msg !== 'object' || typeof msg.type !== 'string') return false;
+    // Addressed to a PDF viewer tab, which answers itself.
+    if ((msg.type as string) === 'viewer:command') return false;
     handle(msg, sender).then(sendResponse, (e: unknown) =>
       sendResponse({ ok: false, error: toProviderError(e).toJSON() }),
     );
@@ -134,29 +150,35 @@ export default defineBackground(() => {
   // Runs each time the background starts; removeAll() first makes it idempotent.
   setupMenus().catch((e: unknown) => console.warn('[translate-now] context menu setup failed', e));
 
-  async function sendToTab(tabId: number | undefined, msg: unknown) {
+  async function sendToTab(tab: Browser.tabs.Tab | undefined, msg: ContentMessage) {
+    const tabId = tab?.id;
     if (tabId === undefined || tabId < 0) return;
+    const url = tab?.url ?? (await browser.tabs.get(tabId).catch(() => undefined))?.url;
     try {
-      await browser.tabs.sendMessage(tabId, msg);
+      await sendToPage(tabId, url, msg);
     } catch {
-      // No content script on this page (e.g. browser internal pages).
+      // No content script: the browser's own PDF viewer (Firefox) or an internal page.
+      if (msg.type === 'page:toggle' && !isViewerUrl(url) && isLikelyPdfUrl(url)) {
+        await openViewer(tabId, url!).catch(() => {});
+      }
     }
   }
 
   browser.contextMenus.onClicked.addListener((info, tab) => {
-    if (info.menuItemId === MENU_PAGE) void sendToTab(tab?.id, { type: 'page:toggle' });
+    if (info.menuItemId === MENU_PAGE) void sendToTab(tab, { type: 'page:toggle' });
     if (info.menuItemId === MENU_SELECTION) {
-      void sendToTab(tab?.id, { type: 'selection:translate', text: info.selectionText });
+      void sendToTab(tab, { type: 'selection:translate', text: info.selectionText });
     }
   });
 
   browser.commands.onCommand.addListener((command, tab) => {
     const run = async () => {
-      const tabId =
-        tab?.id ?? (await browser.tabs.query({ active: true, currentWindow: true }))[0]?.id;
-      if (command === 'toggle-page') await sendToTab(tabId, { type: 'page:toggle' });
+      const target = tab?.id
+        ? tab
+        : (await browser.tabs.query({ active: true, currentWindow: true }))[0];
+      if (command === 'toggle-page') await sendToTab(target, { type: 'page:toggle' });
       if (command === 'translate-selection')
-        await sendToTab(tabId, { type: 'selection:translate' });
+        await sendToTab(target, { type: 'selection:translate' });
     };
     void run();
   });

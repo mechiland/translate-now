@@ -1,0 +1,243 @@
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+.pdf-viewer {
+  --zoom: 1;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  background: var(--gray-3, #ececef);
+}
+
+.pdf-pages {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+  min-width: max-content;
+}
+
+.pdf-row {
+  display: flex;
+  gap: 16px;
+}
+
+.pdf-page {
+  position: relative;
+  width: calc(var(--w) * var(--zoom) * 1px);
+  height: calc(var(--h) * var(--zoom) * 1px);
+  overflow: hidden;
+  background: #fff;
+  box-shadow:
+    0 0 0 1px rgb(0 0 0 / 0.06),
+    0 2px 8px rgb(0 0 0 / 0.12);
+  /* pdf.js text layer sizing */
+  --total-scale-factor: var(--zoom);
+  --scale-round-x: 1px;
+  --scale-round-y: 1px;
+}
+
+.pdf-bitmap {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  user-select: none;
+}
+
+.pdf-viewer[data-translated='false'] .pdf-translated,
+.pdf-viewer[data-translated='true'][data-mode='translation-only'] .pdf-original {
+  display: none;
+}
+
+/* ---- translation overlay (laid out at 2 units per PDF point, then scaled) ---- */
+
+.tn-pdf-overlay {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+  transform: scale(calc(var(--zoom) / 2));
+}
+
+.tn-pdf-block {
+  position: absolute;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0 1px;
+  color: #111;
+  font-family:
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    'PingFang SC',
+    'Hiragino Sans GB',
+    'Microsoft YaHei',
+    'Noto Sans CJK SC',
+    'Source Han Sans SC',
+    sans-serif;
+  line-height: 1.25;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  word-break: normal;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+.tn-pdf-block.tn-pending {
+  border-radius: 4px;
+  background: rgb(59 130 246 / 0.08);
+  animation: tn-pdf-pulse 1.1s ease-in-out infinite alternate;
+  pointer-events: none;
+}
+
+@keyframes tn-pdf-pulse {
+  to {
+    background: rgb(59 130 246 / 0.2);
+  }
+}
+
+.tn-pdf-block.tn-error {
+  border-radius: 4px;
+  outline: 3px dashed rgb(194 65 12 / 0.45);
+}
+
+.tn-pdf-retry {
+  position: absolute;
+  top: 0;
+  right: 0;
+  transform: translateY(-100%);
+  padding: 2px 10px;
+  border: 2px solid rgb(194 65 12 / 0.5);
+  border-radius: 8px;
+  background: #fff;
+  color: #c2410c;
+  font:
+    22px/1.4 system-ui,
+    sans-serif;
+  cursor: pointer;
+}
+
+/* ---- pdf.js text layer (subset of pdfjs-dist/web/pdf_viewer.css) ---- */
+
+.textLayer {
+  position: absolute;
+  inset: 0;
+  overflow: clip;
+  opacity: 1;
+  line-height: 1;
+  text-align: initial;
+  letter-spacing: normal;
+  word-spacing: normal;
+  text-size-adjust: none;
+  -webkit-text-size-adjust: none;
+  forced-color-adjust: none;
+  transform-origin: 0 0;
+  caret-color: CanvasText;
+  z-index: 0;
+  --min-font-size: 1;
+  --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size));
+  --min-font-size-inv: calc(1 / var(--min-font-size));
+}
+
+.textLayer :is(span, br) {
+  position: absolute;
+  color: transparent;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0% 0%;
+  user-select: text;
+}
+
+.textLayer > :not(.markedContent),
+.textLayer .markedContent span:not(.markedContent) {
+  z-index: 1;
+  --font-height: 0;
+  font-size: calc(var(--text-scale-factor) * var(--font-height));
+  --scale-x: 1;
+  --rotate: 0deg;
+  transform: rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv));
+}
+
+.textLayer .markedContent {
+  display: contents;
+}
+
+.textLayer ::selection {
+  background: rgb(0 0 255 / 0.25);
+  background: color-mix(in srgb, AccentColor, transparent 50%);
+  color: transparent;
+}
+
+.textLayer br::selection {
+  background: transparent;
+}
+
+.textLayer .endOfContent {
+  display: block;
+  position: absolute;
+  inset: 100% 0 0;
+  z-index: 0;
+  cursor: default;
+  user-select: none;
+}
+
+.textLayer.selecting .endOfContent {
+  top: 0;
+}
+
+/* ---- export (print to PDF): one PDF page, or a side-by-side pair, per sheet ---- */
+
+@media print {
+  html,
+  body,
+  #root,
+  .pdf-app {
+    height: auto !important;
+    overflow: visible !important;
+    background: #fff !important;
+  }
+  .pdf-toolbar,
+  .pdf-banner,
+  tn-ui,
+  .tn-pdf-block.tn-pending,
+  .tn-pdf-retry {
+    display: none !important;
+  }
+  .tn-pdf-block.tn-error {
+    outline: none;
+  }
+  .pdf-viewer {
+    overflow: visible;
+    background: #fff;
+  }
+  .pdf-pages {
+    display: block;
+    padding: 0;
+    min-width: 0;
+  }
+  .pdf-row {
+    gap: 0;
+    overflow: hidden;
+    break-after: page;
+    break-inside: avoid;
+  }
+  .pdf-row:last-child {
+    break-after: auto;
+  }
+  .pdf-page {
+    box-shadow: none;
+  }
+  /* A transformed overlay is fragmented by its unscaled (taller) layout box, which cuts
+     off the lower half of the page; zoom scales the layout box itself. */
+  .tn-pdf-overlay {
+    transform: none;
+    zoom: calc(var(--zoom) / 2);
+  }
+}

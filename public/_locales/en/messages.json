@@ -1,7 +1,7 @@
 {
   "extName": { "message": "Translate Now" },
   "extDescription": {
-    "message": "Bilingual web page and selection translation using your own AI API key or a local model."
+    "message": "Bilingual translation of web pages, PDFs and selected text using your own AI API key or a local model."
   },
   "cmdTogglePage": { "message": "Translate page / show original" },
   "cmdTranslateSelection": { "message": "Translate selected text" },

@@ -21,7 +21,8 @@ import { Switch } from '@/components/ui/switch';
 import { SimpleSelect } from '@/components/app/simple-select';
 import { createT, type MessageKey } from '@/lib/i18n';
 import { LANGUAGES } from '@/lib/languages';
-import { sendToTab, type PageState } from '@/lib/messaging';
+import { isViewerUrl, sendToPage, type PageState } from '@/lib/messaging';
+import { isLikelyPdfUrl, pdfUrlFromViewer, viewerPath } from '@/lib/pdf/url';
 import { getPreset } from '@/lib/providers/presets';
 import { getActiveProvider, type DisplayMode, type SiteMode } from '@/lib/settings/schema';
 import { effectiveSiteConfig } from '@/lib/settings/siteRules';
@@ -37,6 +38,11 @@ import { useSettings } from '@/hooks/use-settings';
 
 function hostOf(url: string | undefined): string | undefined {
   if (!url) return undefined;
+  // Our PDF viewer: settings apply to the site the PDF came from.
+  if (isViewerUrl(url)) {
+    const file = pdfUrlFromViewer(url, browser.runtime.getURL('/pdf-viewer.html'));
+    return file ? (hostOf(file) ?? '') : '';
+  }
   try {
     const u = new URL(url);
     return u.protocol === 'http:' || u.protocol === 'https:' || u.protocol === 'file:'
@@ -44,6 +50,17 @@ function hostOf(url: string | undefined): string | undefined {
       : undefined;
   } catch {
     return undefined;
+  }
+}
+
+/** Ask the server whether a URL is a PDF (for PDFs without a telltale URL). */
+async function servesPdf(url: string): Promise<boolean> {
+  if (!/^https?:/.test(url)) return false;
+  try {
+    const res = await fetch(url, { method: 'HEAD', signal: AbortSignal.timeout(2500) });
+    return (res.headers.get('content-type') ?? '').toLowerCase().includes('application/pdf');
+  } catch {
+    return false;
   }
 }
 
@@ -99,13 +116,16 @@ export default function App() {
 function Popup() {
   const [settings, update] = useSettings();
   const [tabId, setTabId] = useState<number>();
+  const [tabUrl, setTabUrl] = useState<string>();
+  /** The tab shows a PDF in the browser's own viewer. */
+  const [pdf, setPdf] = useState(false);
   const [host, setHost] = useState<string>();
   const [state, setState] = useState<PageState | null>();
   const [shortcut, setShortcut] = useState('');
 
-  const refresh = useCallback(async (id: number) => {
+  const refresh = useCallback(async (id: number, url: string | undefined) => {
     try {
-      setState((await sendToTab(id, { type: 'page:state' })) ?? null);
+      setState((await sendToPage(id, url, { type: 'page:state' })) ?? null);
     } catch {
       setState(null);
     }
@@ -115,9 +135,23 @@ function Popup() {
     void (async () => {
       const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
       setTabId(tab?.id);
+      setTabUrl(tab?.url);
       setHost(hostOf(tab?.url));
-      if (tab?.id !== undefined) await refresh(tab.id);
-      else setState(null);
+      let reachable = false;
+      if (tab?.id !== undefined) {
+        try {
+          const s = (await sendToPage(tab.id, tab.url, { type: 'page:state' })) ?? null;
+          setState(s);
+          reachable = !!s;
+          if (s?.pdf) setPdf(true);
+        } catch {
+          setState(null);
+        }
+      } else setState(null);
+      // No content script: maybe the browser's own PDF viewer (Firefox runs none there).
+      if (!reachable && tab?.url && !isViewerUrl(tab.url)) {
+        setPdf(isLikelyPdfUrl(tab.url) || (await servesPdf(tab.url)));
+      }
       const cmds = await browser.commands.getAll().catch(() => []);
       setShortcut(cmds.find((c) => c.name === 'toggle-page')?.shortcut ?? '');
     })();
@@ -126,9 +160,9 @@ function Popup() {
   // Poll progress while the page is translating.
   useEffect(() => {
     if (tabId === undefined || !state?.translated) return;
-    const timer = setInterval(() => void refresh(tabId), 700);
+    const timer = setInterval(() => void refresh(tabId, tabUrl), 700);
     return () => clearInterval(timer);
-  }, [tabId, state?.translated, refresh]);
+  }, [tabId, tabUrl, state?.translated, refresh]);
 
   // Swap the static loading surface for the fully configured UI in the same
   // frame, after the theme's portal has initialized during the settings read.
@@ -142,19 +176,25 @@ function Popup() {
   const preset = provider ? getPreset(provider.presetId) : undefined;
   const missingKey = !provider || !provider.model || (preset?.keyRequired && !provider.apiKey);
   const site = host ? effectiveSiteConfig(settings, host) : undefined;
-  const available = state !== null && state !== undefined && host !== undefined;
+  const available = state !== null && state !== undefined && host !== undefined && !pdf;
 
   const toggle = async () => {
     if (tabId === undefined) return;
     try {
-      setState((await sendToTab(tabId, { type: 'page:toggle' })) ?? null);
+      setState((await sendToPage(tabId, tabUrl, { type: 'page:toggle' })) ?? null);
     } catch {
       setState(null);
     }
   };
+  const openPdfViewer = () => {
+    if (tabId === undefined || !tabUrl) return;
+    void browser.tabs
+      .update(tabId, { url: browser.runtime.getURL(viewerPath(tabUrl)) })
+      .then(() => window.close());
+  };
   const retryErrors = () =>
     tabId !== undefined &&
-    void sendToTab(tabId, { type: 'page:retry-errors' }).then((s) => setState(s ?? null));
+    void sendToPage(tabId, tabUrl, { type: 'page:retry-errors' }).then((s) => setState(s ?? null));
   const openOptions = (hash?: string) =>
     void (
       hash
@@ -191,6 +231,13 @@ function Popup() {
             <div className="flex h-10 items-center justify-center">
               <Spinner />
             </div>
+          ) : pdf ? (
+            <>
+              <Button size="3" className="main-btn w-full" onClick={openPdfViewer}>
+                {t('popupTranslatePdf')}
+              </Button>
+              <p className="m-0 text-xs text-muted-foreground">{t('popupPdfHint')}</p>
+            </>
           ) : available ? (
             <>
               <Button

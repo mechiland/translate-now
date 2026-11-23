@@ -13,6 +13,54 @@ export interface MockServer {
   close(): Promise<void>;
 }
 
+/** Text of the generated test PDF: a heading and paragraphs, each line on its own baseline. */
+export const PDF_PARAGRAPHS = [
+  ['Introduction'],
+  [
+    'Recurrent neural networks have been firmly established as state of the art',
+    'approaches in sequence modeling and transduction problems such as language',
+    'modeling and machine translation.',
+  ],
+  [
+    'In this work we propose the Transformer, a model architecture eschewing',
+    'recurrence and instead relying entirely on an attention mechanism.',
+  ],
+];
+
+/** A minimal one-page PDF (Helvetica text) for the PDF viewer tests. */
+export function makePdf(): Buffer {
+  const ops: string[] = [];
+  let y = 720;
+  PDF_PARAGRAPHS.forEach((lines, i) => {
+    const size = i === 0 ? 16 : 11;
+    for (const line of lines) {
+      ops.push(`BT /F1 ${size} Tf 72 ${y} Td (${line}) Tj ET`);
+      y -= size * 1.25;
+    }
+    y -= 14;
+  });
+  ops.push('BT /F1 10 Tf 300 40 Td (1) Tj ET');
+  const content = ops.join('\n');
+  const objects = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>',
+    `<< /Length ${content.length} >>\nstream\n${content}\nendstream`,
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+  ];
+  let out = '%PDF-1.4\n';
+  const offsets: number[] = [];
+  objects.forEach((body, i) => {
+    offsets.push(out.length);
+    out += `${i + 1} 0 obj\n${body}\nendobj\n`;
+  });
+  const xref = out.length;
+  out += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  for (const o of offsets) out += `${String(o).padStart(10, '0')} 00000 n \n`;
+  out += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+  return Buffer.from(out, 'latin1');
+}
+
 /** Deterministic fake translation: "[ZH] " + original text. */
 export function fakeTranslate(text: string): string {
   return `[ZH] ${text}`;
@@ -64,6 +112,11 @@ export async function startMockServer(fixturesDir: string): Promise<MockServer> 
         if (mode === 'slow') setTimeout(reply, 400);
         else reply();
       });
+      return;
+    }
+    if (url.pathname.endsWith('.pdf') || url.pathname.startsWith('/pdf/')) {
+      res.writeHead(200, { ...cors, 'Content-Type': 'application/pdf' });
+      res.end(makePdf());
       return;
     }
     // Static fixtures
