@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/mechiland/translate-now/compare/v0.3.4...v0.4.0) (2026-11-23)
+
+
+### Features
+
+* translate PDFs side by side and export the translation ([#17](https://github.com/mechiland/translate-now/issues/17)) ([668b2a6](https://github.com/mechiland/translate-now/commit/668b2a6dcc21e5e4fcf7bc9305cd378da6600f20))
+
 ## [0.3.4](https://github.com/mechiland/translate-now/compare/v0.3.3...v0.3.4) (2026-11-18)
 
 
