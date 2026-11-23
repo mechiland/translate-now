@@ -14,6 +14,7 @@ Use your own LLM API key (OpenAI, OpenRouter, DeepSeek, Qwen, Gemini, Claude, Ol
   - Skips code blocks, inputs, navigation and menus, `notranslate`, and paragraphs already in the target language.
   - Short text (buttons, labels, headings) gets its translation right after the original, keeping layouts intact.
   - Paragraphs are batched into one request; results are cached in local IndexedDB so the same text is never requested twice.
+- **PDF translation**: open a PDF (for example an arXiv paper) and press **Translate this PDF** in the popup or `Alt+A`. It opens in the built-in reader with the original page on the left and a translated copy on the right: each paragraph is replaced in place, while figures, tables and equations stay as they are. Switch to translation only, zoom, select text, and **Export PDF** to save the translated pages (translation only, or side by side) through the print dialog's “Save as PDF”. Local files can be dropped onto the reader.
 - **Selection translation**: select text and click the button for a translation card (copy, change target language, drag). Single words and phrases get dictionary-style explanations. Also available from the context menu and a keyboard shortcut.
 - **Hover translation**: point at a paragraph and tap `Ctrl` on its own to translate just that paragraph; tap again to remove it. The key can be changed to `Alt`/`Shift` or turned off under **Selection & hover**.
 - **Providers**: presets for OpenAI, OpenRouter, DeepSeek, Qwen (DashScope), Google Gemini, Anthropic Claude and Ollama, plus any OpenAI-compatible endpoint. Save multiple profiles and switch between them; test the connection and fetch the model list from the settings page.
@@ -82,7 +83,7 @@ Change them at `chrome://extensions/shortcuts` (Firefox: `about:addons` → gear
 
 ## Privacy
 
-- Only the text you translate (plus the page title and domain, as context) is sent, directly to **the provider you configure**.
+- Only the text you translate (plus the page title and domain, as context) is sent, directly to **the provider you configure**. PDFs are downloaded from their own address and processed in the browser.
 - Settings and API keys stay in local browser storage (`storage.local`). They are never synced or sent anywhere else.
 - No analytics, telemetry or remote code.
 
@@ -90,7 +91,9 @@ See [PRIVACY.md](PRIVACY.md) for the full policy.
 
 ## Known limitations
 
-- PDFs in the built-in viewer, video subtitles, browser internal pages and extension store pages are not supported.
+- Video subtitles, browser internal pages and extension store pages are not supported.
+- PDF translation needs a text layer: scanned PDFs (images only) are not translated. Translated paragraphs are fitted into the original paragraph's box, so very long translations use a smaller font. Exported PDFs show each page as an image with the translation as text on top; password-protected PDFs aren't supported.
+- To translate a local PDF opened from disk in Chrome, turn on “Allow access to file URLs” for the extension, or drop the file onto the reader.
 - Only the top-level frame is translated (content inside iframes is not).
 - Translations are plain text; links and bold text in the original are not preserved in the translation.
 - In translation-only mode, paragraphs that contain images, buttons or other non-text elements show both the original and the translation (to avoid hiding page elements).
@@ -141,11 +144,11 @@ Secrets, credential dry runs and per-store retries are covered in the [publishin
 
 ```
 src/
-  entrypoints/      background, content script, popup, options page (WXT entrypoints)
+  entrypoints/      background, content script, popup, options page, PDF viewer (WXT entrypoints)
   components/ui/    shadcn components from the radix-base registry (generated; add more with shadcn)
   components/app/   app-level components composed from them
   hooks/            React hooks
-  lib/              framework-free logic: DOM segmentation, providers, settings, translation, i18n
+  lib/              framework-free logic: DOM segmentation, PDF layout, providers, settings, translation, i18n
   lib/theme/        radix-base design tokens (generated)
   styles/           Tailwind entry for the popup and options page
 public/             icons and _locales, copied as-is

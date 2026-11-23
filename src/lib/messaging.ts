@@ -1,4 +1,5 @@
 import { browser } from 'wxt/browser';
+import { VIEWER_PATH } from './pdf/url';
 import type { SerializedError } from './providers/errors';
 import type { ProviderProfile } from './settings/schema';
 import type { SegmentResult } from './translate/translator';
@@ -13,7 +14,8 @@ export type BackgroundMessage =
   | { type: 'provider:models'; profile: ProviderProfile }
   | { type: 'cache:clear' }
   | { type: 'cache:count' }
-  | { type: 'options:open' };
+  | { type: 'options:open' }
+  | { type: 'pdf:open'; url: string };
 
 export type Result<T> = ({ ok: true } & T) | { ok: false; error: SerializedError };
 
@@ -26,6 +28,7 @@ export interface BackgroundResponses {
   'cache:clear': { ok: true };
   'cache:count': { count: number };
   'options:open': { ok: true };
+  'pdf:open': { ok: true };
 }
 
 export function sendToBackground<M extends BackgroundMessage>(
@@ -43,6 +46,8 @@ export interface PageState {
   done: number;
   pending: number;
   errors: number;
+  /** The tab shows a PDF in the browser's own viewer (open ours to translate it). */
+  pdf?: boolean;
 }
 
 export type ContentMessage =
@@ -54,4 +59,31 @@ export type ContentMessage =
 
 export function sendToTab(tabId: number, msg: ContentMessage): Promise<PageState | undefined> {
   return browser.tabs.sendMessage(tabId, msg) as Promise<PageState | undefined>;
+}
+
+// ---- popup / background -> PDF viewer tab ----
+// Extension pages get no tabs.sendMessage, so commands for the viewer go through
+// runtime messaging, addressed by tab id.
+
+export interface ViewerMessage {
+  type: 'viewer:command';
+  tabId: number;
+  command: ContentMessage;
+}
+
+export function isViewerUrl(url: string | undefined): boolean {
+  return !!url && url.startsWith(browser.runtime.getURL(VIEWER_PATH));
+}
+
+/** Send a page command to a tab, whether it shows a web page or our PDF viewer. */
+export function sendToPage(
+  tabId: number,
+  url: string | undefined,
+  command: ContentMessage,
+): Promise<PageState | undefined> {
+  if (isViewerUrl(url)) {
+    const msg: ViewerMessage = { type: 'viewer:command', tabId, command };
+    return browser.runtime.sendMessage(msg) as Promise<PageState | undefined>;
+  }
+  return sendToTab(tabId, command);
 }

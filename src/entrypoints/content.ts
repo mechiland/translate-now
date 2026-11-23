@@ -18,6 +18,9 @@ export default defineContentScript({
   async main() {
     if (!document.documentElement || !(document instanceof HTMLDocument)) return;
     const host = location.hostname;
+    // Chrome shows PDFs in a wrapper document that content scripts can reach (Firefox's
+    // viewer runs none). Translating means opening the PDF in our viewer instead.
+    const isPdf = document.contentType === 'application/pdf';
     let settings: Settings = await loadSettings();
     let t: TFunction = createT(settings.uiLang);
     const site = () => effectiveSiteConfig(settings, host);
@@ -103,17 +106,34 @@ export default defineContentScript({
       },
     });
 
-    const state = (): PageState => ({ translated: page.active, host, ...page.stats() });
+    const state = (): PageState => ({
+      translated: page.active,
+      host,
+      ...page.stats(),
+      ...(isPdf ? { pdf: true } : {}),
+    });
+    const openPdfViewer = () =>
+      void sendToBackground({ type: 'pdf:open', url: location.href }).catch(() => {});
 
     browser.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) => {
       const msg = message as ContentMessage;
       switch (msg?.type) {
         case 'page:toggle':
+          if (isPdf) {
+            openPdfViewer();
+            sendResponse(state());
+            return;
+          }
           fatalShown = false;
           page.toggle();
           sendResponse(state());
           return;
         case 'page:set':
+          if (isPdf) {
+            if (msg.on) openPdfViewer();
+            sendResponse(state());
+            return;
+          }
           fatalShown = false;
           if (msg.on) page.start();
           else page.stop();
@@ -178,6 +198,7 @@ export default defineContentScript({
       if (sameLanguage(lang, settings.targetLang)) return false;
       return !settings.neverTranslateLangs.some((n) => sameLanguage(n, lang));
     };
+    if (isPdf) return;
     if (window === window.top && (await auto())) page.start();
   },
 });

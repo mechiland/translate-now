@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { baseSettings, configure, sendToPage, test } from './harness';
-import type { MockServer } from './mockServer';
+import { PDF_PARAGRAPHS, type MockServer } from './mockServer';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const screenshots = path.resolve(here, 'screenshots');
@@ -467,4 +467,136 @@ test('popup can retry when its application fails to load', async ({ context, sw 
   await popup.unroute('**/chunks/render-*.js');
   await popup.getByRole('button', { name: /Retry|重试/ }).click();
   await expect(popup.locator('.settings-btn')).toBeVisible();
+});
+
+// ---- PDF -------------------------------------------------------------------
+
+async function extensionId(sw: Worker) {
+  return new URL(sw.url()).host;
+}
+
+async function openViewer(context: BrowserContext, sw: Worker, file: string) {
+  const page = await context.newPage();
+  await page.setViewportSize({ width: 1200, height: 900 });
+  await page.goto(
+    `chrome-extension://${await extensionId(sw)}/pdf-viewer.html?file=${encodeURIComponent(file)}`,
+  );
+  return page;
+}
+
+test('PDF viewer translates paragraphs side by side and skips page numbers', async ({
+  context,
+  sw,
+  server,
+}) => {
+  await configure(sw, baseSettings(server));
+  const page = await openViewer(context, sw, `${server.url}/paper.pdf`);
+  const done = page.locator('.pdf-translated .tn-pdf-block.tn-done');
+  await expect(done).toHaveCount(PDF_PARAGRAPHS.length);
+  await expect(done.nth(0)).toHaveText('[ZH] Introduction');
+  await expect(done.nth(1)).toHaveText(`[ZH] ${PDF_PARAGRAPHS[1]!.join(' ')}`);
+  await expect(page.locator('.pdf-original')).toBeVisible();
+  // The original column has a selectable text layer.
+  await expect(page.locator('.pdf-original .textLayer')).toContainText('Transformer');
+  expect(server.requests.some((r) => r.user.includes('>1<'))).toBe(false);
+  await shot(page, 'pdf-bilingual');
+
+  // Translation only: the original column goes away.
+  await configure(sw, baseSettings(server, { displayMode: 'translation-only' }));
+  await expect(page.locator('.pdf-original')).toBeHidden();
+  await expect(page.locator('.pdf-translated')).toBeVisible();
+});
+
+test('PDF viewer answers popup commands and exports through the print dialog', async ({
+  context,
+  sw,
+  server,
+}) => {
+  await configure(sw, baseSettings(server));
+  const page = await openViewer(context, sw, `${server.url}/paper.pdf`);
+  await expect(page.locator('.tn-pdf-block.tn-done')).toHaveCount(PDF_PARAGRAPHS.length);
+
+  const command = (cmd: unknown) =>
+    sw.evaluate(async (cmd) => {
+      const tabs = await chrome.tabs.query({});
+      const tab = tabs.find((t) => t.url?.includes('/pdf-viewer.html'));
+      return chrome.runtime.sendMessage({ type: 'viewer:command', tabId: tab!.id, command: cmd });
+    }, cmd);
+  expect(await command({ type: 'page:state' })).toMatchObject({
+    translated: true,
+    host: '127.0.0.1',
+    done: PDF_PARAGRAPHS.length,
+  });
+  expect(await command({ type: 'page:toggle' })).toMatchObject({ translated: false });
+  await expect(page.locator('.pdf-translated')).toBeHidden();
+
+  await page.evaluate(() => {
+    (window as unknown as { printed: boolean }).printed = false;
+    window.print = () => void ((window as unknown as { printed: boolean }).printed = true);
+  });
+  await page.getByRole('button', { name: 'Export PDF' }).click();
+  await expect
+    .poll(() => page.evaluate(() => (window as unknown as { printed: boolean }).printed))
+    .toBe(true);
+  // Export turns translation back on and sizes sheets for side-by-side pages.
+  await expect(page.locator('.pdf-translated')).toBeVisible();
+  expect(await page.locator('#tn-print-page').textContent()).toContain('size: 1224pt 792pt');
+});
+
+test('translating a PDF tab opens it in the viewer', async ({ context, sw, server }) => {
+  await configure(sw, baseSettings(server));
+  const page = await context.newPage();
+  const pdfUrl = `${server.url}/pdf/1706.03762`;
+  await page.goto(pdfUrl).catch(() => {});
+  await expect
+    .poll(async () => {
+      try {
+        return ((await sendToPage(sw, pdfUrl, { type: 'page:state' })) as { pdf?: boolean }).pdf;
+      } catch {
+        return false;
+      }
+    })
+    .toBe(true);
+  await sendToPage(sw, pdfUrl, { type: 'page:toggle' });
+  await expect(page).toHaveURL(/pdf-viewer\.html\?file=/);
+  await expect(page.locator('.tn-pdf-block.tn-done')).toHaveCount(PDF_PARAGRAPHS.length);
+});
+
+test('popup offers PDF translation on a PDF tab and controls the viewer', async ({
+  context,
+  sw,
+  server,
+}) => {
+  await configure(sw, baseSettings(server));
+  const pdfUrl = `${server.url}/pdf/2401.00001`;
+  const page = await context.newPage();
+  await page.goto(pdfUrl).catch(() => {});
+  const extId = await extensionId(sw);
+  const openPopup = async () => {
+    const popup = await context.newPage();
+    await popup.addInitScript((target) => {
+      const orig = chrome.tabs.query.bind(chrome.tabs);
+      chrome.tabs.query = (async (q: chrome.tabs.QueryInfo) => {
+        if (q.active) return (await orig({})).filter((t) => t.url?.includes(target));
+        return orig(q);
+      }) as typeof chrome.tabs.query;
+    }, '2401.00001');
+    await popup.goto(`chrome-extension://${extId}/popup.html`);
+    return popup;
+  };
+
+  const popup = await openPopup();
+  const main = popup.locator('.main-btn');
+  await expect(main).toHaveText(/Translate this PDF|翻译此 PDF/);
+  await main.click();
+  await expect(page).toHaveURL(/pdf-viewer\.html/);
+  await expect(page.locator('.tn-pdf-block.tn-done')).toHaveCount(PDF_PARAGRAPHS.length);
+
+  // In the viewer tab the popup works like on any page.
+  const popup2 = await openPopup();
+  const main2 = popup2.locator('.main-btn');
+  await expect(main2).toHaveText(/Show original|显示原文/);
+  await expect(popup2.getByText('127.0.0.1')).toBeVisible();
+  await main2.click();
+  await expect(page.locator('.pdf-translated')).toBeHidden();
 });

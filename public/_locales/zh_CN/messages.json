@@ -1,7 +1,7 @@
 {
   "extName": { "message": "Translate Now" },
   "extDescription": {
-    "message": "使用你自己的 AI API Key 或本地模型，进行网页双语对照翻译与划词翻译。"
+    "message": "使用你自己的 AI API Key 或本地模型，进行网页与 PDF 双语对照翻译和划词翻译。"
   },
   "cmdTogglePage": { "message": "翻译页面 / 显示原文" },
   "cmdTranslateSelection": { "message": "翻译选中文本" },

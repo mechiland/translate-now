@@ -11,13 +11,14 @@ Translate Now
 
 ## Short description
 
-Bring your own API key for bilingual page and selection translation with your preferred AI provider.
+Bring your own API key for bilingual page, PDF and selection translation with your preferred AI provider.
 
 ## English description
 
 Read the web in two languages with Translate Now, a free and open-source browser extension powered by your own translation provider.
 
 - Translate web pages paragraph by paragraph, with translations below the originals or in translation-only mode.
+- Translate PDFs such as research papers side by side: each paragraph is replaced in place while figures and equations stay, and the translated pages can be exported as a PDF.
 - Select text for a floating translation card, or use the context menu and keyboard shortcuts.
 - Point at a paragraph and tap Ctrl to translate just that paragraph.
 - Use built-in presets for popular AI providers, a local model server, or any OpenAI-compatible endpoint.
@@ -30,7 +31,7 @@ Setup: open the extension settings, select a provider, enter your own API key an
 
 Privacy: page text, title, and domain go directly to the API endpoint you configure. Your key authenticates those requests. Settings and keys stay in local browser storage; cached translations stay on your device. No developer-operated server, analytics, ads, or telemetry.
 
-Does not translate browser internal pages, extension-store pages, browser PDF viewers, video subtitles, or content inside iframes.
+Does not translate browser internal pages, extension-store pages, scanned PDFs without a text layer, video subtitles, or content inside iframes.
 
 Source and support: https://github.com/mechiland/translate-now
 
@@ -39,6 +40,7 @@ Source and support: https://github.com/mechiland/translate-now
 Translate Now 是免费开源的网页双语翻译扩展，使用你自己的 API Key 和模型服务。
 
 - 网页逐段双语翻译或仅显示译文，滚动时继续翻译。
+- PDF 左右对照翻译（如学术论文）：段落原位替换为译文，图表和公式保持不变，可导出翻译后的 PDF。
 - 划词翻译浮窗、右键菜单、Alt+A / Alt+S 快捷键。
 - 鼠标停在段落上轻按 Ctrl，只翻译这一段。
 - 内置常用 AI 服务预设，也支持本地模型服务和任意 OpenAI 兼容接口。
@@ -49,12 +51,12 @@ Translate Now 是免费开源的网页双语翻译扩展，使用你自己的 AP
 
 ## Chrome privacy practices and permission justifications
 
-Single purpose: translate web pages and selected text using the user's configured AI translation provider.
+Single purpose: translate web pages, PDFs and selected text using the user's configured AI translation provider.
 
 - `storage`: save provider profiles, API keys, language, display preferences, and site translation rules locally.
 - `contextMenus`: add a right-click action to translate selected text.
 - `activeTab`: identify and operate on the page when the user invokes translation.
-- Host access to all websites: read page text, insert translations, apply per-site automatic rules, and contact arbitrary user-configured provider endpoints, including local servers.
+- Host access to all websites: read page text, insert translations, apply per-site automatic rules, download PDFs the user asks to translate, and contact arbitrary user-configured provider endpoints, including local servers.
 - Remote code: none. All executable JavaScript is bundled. API responses are rendered as text.
 - Data handled for the core feature: website content, browsing activity (page domain/title), and authentication information (user-supplied provider API keys). No advertising, sale of data, creditworthiness use, or unrelated profiling. Third-party processing happens only at the user's configured provider.
 
