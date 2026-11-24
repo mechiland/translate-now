@@ -67,6 +67,8 @@ const TEXT_INLINE_TAGS = new Set([
   'ins',
   'kbd',
   'mark',
+  // Only reached when laid out inline, e.g. paragraphs run together in a clamped preview.
+  'p',
   'q',
   's',
   'samp',

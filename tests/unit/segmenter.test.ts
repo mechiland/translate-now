@@ -437,6 +437,15 @@ describe('social posts', () => {
     expect(s[0]!.payload).toBe('First line\n<a id="1">a link</a>\nlast line');
   });
 
+  it('treats paragraphs run together inline (clamped previews) as one text-only block', () => {
+    const s = styled(
+      '<div class="preview"><p style="display:inline">First paragraph.</p><p style="display:inline">Second one.</p></div>',
+    );
+    expect(s).toHaveLength(1);
+    expect(s[0]!.text).toBe('First paragraph.Second one.');
+    expect(s[0]!.fullBlock).toBe(true);
+  });
+
   it('still collapses line breaks in normal text', () => {
     const s = styled('<p>Wrapped\nsource\ntext</p>');
     expect(s[0]!.text).toBe('Wrapped source text');
