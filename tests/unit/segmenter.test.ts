@@ -242,7 +242,7 @@ describe('buttons and widget roles', () => {
     expect(s[0]!.placement).toBe('after');
     expect(s[0]!.payload).toBe('A very long headline placed directly inside a flex anchor element');
     expect(s[0]!.wrapLink?.getAttribute('href')).toBe('/story');
-    expect(s[0]!.links).toEqual([]);
+    expect(s[0]!.marks).toEqual([]);
   });
 });
 
@@ -252,7 +252,7 @@ describe('links', () => {
     expect(s).toHaveLength(1);
     expect(s[0]!.text).toBe('My great post');
     expect(s[0]!.payload).toBe('My great post');
-    expect(s[0]!.links).toEqual([]);
+    expect(s[0]!.marks).toEqual([]);
     expect(s[0]!.wrapLink?.getAttribute('href')).toBe('/post');
   });
 
@@ -264,7 +264,7 @@ describe('links', () => {
     expect(s[0]!.text).toBe('Read API guide and examples.');
     expect(s[0]!.payload).toBe('Read <a id="1">API guide</a> and <a id="2">examples</a>.');
     expect(s[0]!.wrapLink).toBeUndefined();
-    expect(s[0]!.links.map((a) => a.getAttribute('href'))).toEqual(['/a', '/b']);
+    expect(s[0]!.marks.map((a: Element) => a.getAttribute('href'))).toEqual(['/a', '/b']);
   });
 
   it('preserves line breaks inside inline links and links around code or notranslate text', () => {
@@ -275,7 +275,11 @@ describe('links', () => {
     expect(s[0]!.payload).toBe(
       'Call <a id="1">fetch()</a> or <a id="2">WXT</a>\n<a id="3">Line 1\nLine 2</a>',
     );
-    expect(s[0]!.links.map((a) => a.getAttribute('href'))).toEqual(['/fetch', '/wxt', '/multi']);
+    expect(s[0]!.marks.map((a: Element) => a.getAttribute('href'))).toEqual([
+      '/fetch',
+      '/wxt',
+      '/multi',
+    ]);
   });
 
   it('ignores anchors without href and avoids double-linking blocks already inside an anchor', () => {
@@ -284,11 +288,61 @@ describe('links', () => {
     );
     expect(s).toHaveLength(2);
     expect(s[0]!.payload).toBe('See section one here.');
-    expect(s[0]!.links).toEqual([]);
+    expect(s[0]!.marks).toEqual([]);
     expect(s[0]!.wrapLink).toBeUndefined();
     expect(s[1]!.payload).toBe('Card heading');
-    expect(s[1]!.links).toEqual([]);
+    expect(s[1]!.marks).toEqual([]);
     expect(s[1]!.wrapLink).toBeUndefined();
+  });
+});
+
+describe('styled text (KEEP_STYLE_SELECTORS)', () => {
+  it('marks LaTeXML glossary terms, italics and typewriter text like links', () => {
+    const s = segs(
+      '<p>Each <abbr class="ltx_glossaryref ltx_missing">MOSA</abbr> runs the <span class="ltx_text ltx_font_italic">sci</span> ' +
+        'interferometer in <span class="ltx_text ltx_font_typewriter">lisainstrument</span> (<a href="#b1">Bayle, 2023</a>).</p>',
+    );
+    expect(s).toHaveLength(1);
+    expect(s[0]!.text).toBe(
+      'Each MOSA runs the sci interferometer in lisainstrument (Bayle, 2023).',
+    );
+    expect(s[0]!.payload).toBe(
+      'Each <a id="1">MOSA</a> runs the <a id="2">sci</a> interferometer in <a id="3">lisainstrument</a> (<a id="4">Bayle, 2023</a>).',
+    );
+    expect(s[0]!.marks.map((el) => el.localName)).toEqual(['abbr', 'span', 'span', 'a']);
+    expect(s[0]!.wrapLink).toBeUndefined();
+  });
+
+  it('leaves other styled or LaTeXML text alone', () => {
+    const s = segs(
+      '<p>See <span class="ltx_text ltx_bib_journal">Phys. Rev. D</span> and <em>this</em> <span class="glossaryref">term</span>.</p>',
+    );
+    expect(s[0]!.payload).toBe('See Phys. Rev. D and this term.');
+    expect(s[0]!.marks).toEqual([]);
+  });
+
+  it('keeps links clickable inside styled text and styled text plain inside links', () => {
+    const s = segs(
+      '<p>Read <span class="ltx_font_italic">the <a href="/g">guide</a> first</span> or <a href="/h"><span class="ltx_font_italic">this</span> one</a>.</p>',
+    );
+    expect(s[0]!.payload).toBe(
+      'Read <a id="1">the</a> <a id="2">guide</a> <a id="3">first</a> or <a id="4">this one</a>.',
+    );
+    expect(s[0]!.marks.map((el) => el.localName)).toEqual(['span', 'a', 'span', 'a']);
+  });
+
+  it('wraps a fully styled segment in a marker, not in a link', () => {
+    const s = segs('<p><span class="ltx_font_italic">Entirely italic sentence.</span></p>');
+    expect(s[0]!.payload).toBe('<a id="1">Entirely italic sentence.</a>');
+    expect(s[0]!.wrapLink).toBeUndefined();
+  });
+
+  it('keeps styled markers when the translation goes inside a link', () => {
+    const s = segs(
+      '<a href="/card"><div>A <span class="ltx_font_italic">styled</span> card title</div></a>',
+    );
+    expect(s[0]!.payload).toBe('A <a id="1">styled</a> card title');
+    expect(s[0]!.marks.map((el) => el.localName)).toEqual(['span']);
   });
 });
 

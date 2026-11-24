@@ -130,13 +130,41 @@ describe('createMirrorLink & renderTranslatedContent', () => {
     renderTranslatedContent(document, span, '<b>阅读</b><a id="1">文档</a>', {
       plainText: 'Read docs',
       block: p,
-      links: [source],
+      marks: [source],
     });
     expect(span.querySelectorAll('b')).toHaveLength(0);
     expect(span.querySelectorAll('a')).toHaveLength(1);
     expect(span.querySelector('a')!.getAttribute('href')).toBe('/docs');
     expect(span.querySelector('a')!.textContent).toBe('文档');
     expect(span.textContent).toBe('<b>阅读</b>文档');
+  });
+});
+
+describe('styled text', () => {
+  it('copies the tag, classes and inline style of styled text, not its id', () => {
+    document.body.innerHTML =
+      '<p>Each <abbr id="g1" class="ltx_glossaryref ltx_missing" title="">MOSA</abbr> runs <span class="ltx_font_italic" style="color: red">sci</span> (<a href="#b">ref</a>)</p>';
+    const p = document.querySelector('p')!;
+    const span = document.createElement('span');
+    renderTranslatedContent(
+      document,
+      span,
+      '每个 <a id="1">MOSA</a> 运行 <a id="2">sci</a>（<a id="3">文献</a>）',
+      {
+        plainText: '',
+        block: p,
+        marks: [p.querySelector('abbr')!, p.querySelector('span')!, p.querySelector('a')!],
+      },
+    );
+    const abbr = span.querySelector('abbr')!;
+    expect(abbr.className).toBe('ltx_glossaryref ltx_missing');
+    expect(abbr.hasAttribute('id')).toBe(false);
+    expect(abbr.textContent).toBe('MOSA');
+    const italic = span.querySelector('span')!;
+    expect(italic.className).toBe('ltx_font_italic');
+    expect(italic.getAttribute('style')).toBe('color: red');
+    expect(span.querySelector('a')!.getAttribute('href')).toBe('#b');
+    expect(span.textContent).toBe('每个 MOSA 运行 sci（文献）');
   });
 });
 
@@ -151,7 +179,7 @@ describe('formula placeholders', () => {
       document,
       span,
       '边长 <m id="1"/> 公里，TDI-<m id=2></m>（<a id="1">文献 <m id="2"/></a>）<m id="9"/></m>',
-      { plainText: '', block: p, links: [p.querySelector('a')!], atoms: [m1!, m2!] },
+      { plainText: '', block: p, marks: [p.querySelector('a')!], atoms: [m1!, m2!] },
     );
     const copies = [...span.querySelectorAll('math')];
     expect(copies).toHaveLength(2);
@@ -169,7 +197,7 @@ describe('formula placeholders', () => {
     renderTranslatedContent(document, span, '甲 <m id="1"/> 乙', {
       plainText: 'x y',
       block: p,
-      links: [],
+      marks: [],
       atoms: [p.querySelector('math')!],
     });
     expect([...span.childNodes].map((n) => n.nodeName.toLowerCase())).toEqual([
