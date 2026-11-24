@@ -1,3 +1,5 @@
+import { atomText } from './segmenter';
+
 export type InlineLinkPart =
   { type: 'text'; text: string } | { type: 'link'; index: number; text: string };
 
@@ -119,6 +121,43 @@ export interface RenderLinksOptions {
   block: Element;
   links: HTMLAnchorElement[];
   wrapLink?: HTMLAnchorElement;
+  /** Inline formulas referenced by `<m id="N"/>` placeholders in the translation. */
+  atoms?: Element[];
+}
+
+/** `<m id="N"/>`, also tolerating `<m id=N>`, quotes and a redundant `</m>`. */
+const ATOM_TAG_RE = /<m\b[^>]*?\bid\s*=\s*["']?(\d+)["']?[^>]*>(?:\s*<\/m>)?|<\/m>/gi;
+
+/** A copy of a formula for the translation, without ids that would duplicate the original's. */
+function cloneAtom(source: Element): Element {
+  const copy = source.cloneNode(true) as Element;
+  copy.removeAttribute('id');
+  for (const el of Array.from(copy.querySelectorAll('[id]'))) el.removeAttribute('id');
+  return copy;
+}
+
+/** Text nodes for `text`, with every `<m id="N"/>` placeholder turned back into its formula. */
+function textWithAtoms(doc: Document, text: string, atoms: Element[]): Node[] {
+  if (atoms.length === 0) return text ? [doc.createTextNode(text)] : [];
+  const nodes: Node[] = [];
+  let cursor = 0;
+  for (const m of text.matchAll(ATOM_TAG_RE)) {
+    if (m.index! > cursor) nodes.push(doc.createTextNode(text.slice(cursor, m.index)));
+    cursor = m.index! + m[0].length;
+    const atom = m[1] === undefined ? undefined : atoms[Number(m[1]) - 1];
+    if (atom) nodes.push(cloneAtom(atom));
+  }
+  if (cursor < text.length) nodes.push(doc.createTextNode(text.slice(cursor)));
+  return nodes;
+}
+
+/** Link text is plain: a placeholder the model moved inside a link becomes the formula's text. */
+function atomsAsText(text: string, atoms: Element[]): string {
+  if (atoms.length === 0) return text;
+  return text.replace(ATOM_TAG_RE, (_, id?: string) => {
+    const atom = id === undefined ? undefined : atoms[Number(id) - 1];
+    return atom ? atomText(atom) : '';
+  });
 }
 
 /** Populate `container` with translated text, restoring whole-segment or inline links. */
@@ -133,8 +172,9 @@ export function renderTranslatedContent(
     container.replaceChildren(a);
     return;
   }
+  const atoms = opts.atoms ?? [];
   if (opts.links.length === 0) {
-    container.textContent = translatedText;
+    container.replaceChildren(...textWithAtoms(doc, translatedText, atoms));
     return;
   }
   const preserveLiteralClose = /<\/a>/i.test(opts.plainText);
@@ -142,10 +182,11 @@ export function renderTranslatedContent(
   const nodes: Node[] = [];
   for (const part of parts) {
     if (part.type === 'text') {
-      nodes.push(doc.createTextNode(part.text));
+      nodes.push(...textWithAtoms(doc, part.text, atoms));
     } else {
       const source = opts.links[part.index]!;
-      nodes.push(createMirrorLink(doc, source, part.text, source !== opts.block));
+      const text = atomsAsText(part.text, atoms);
+      nodes.push(createMirrorLink(doc, source, text, source !== opts.block));
     }
   }
   container.replaceChildren(...nodes);
