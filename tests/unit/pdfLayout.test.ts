@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { extractBlocks, isTranslatableBlock, type TextItemLike } from '@/lib/pdf/layout';
+import {
+  extractBlocks,
+  isTranslatableBlock,
+  piecesText,
+  type TextItemLike,
+} from '@/lib/pdf/layout';
 
 /** Viewport transform of a US Letter page at scale 1 (flips y). */
 const VT = [1, 0, 0, -1, 0, 792];
@@ -136,6 +141,96 @@ describe('extractBlocks', () => {
       ),
     ]);
     expect(out).toHaveLength(2);
+  });
+
+  it('keeps the glyph runs behind the text, without the hyphen of a split word', () => {
+    const out = blocks(
+      para(['We propose a new simple network archi-', 'tecture based solely on attention.'], 700),
+    );
+    expect(piecesText(out[0]!.pieces)).toBe(out[0]!.text);
+    expect(out[0]!.pieces.filter((p) => p.g).map((p) => p.str)).toEqual([
+      'We propose a new simple network archi',
+      'tecture based solely on attention.',
+    ]);
+  });
+
+  it('does not let many small subscript characters outvote the line text', () => {
+    // "and W^O ∈ R^{d_model × d_v}." as the last line of a paragraph.
+    const out = blocks([
+      ...para(['Where the projections are parameter matrices for every head and'], 700),
+      item('and', 100, 688),
+      item('W', 120, 688, 10, 'mi'),
+      item('O', 126, 692, 7, 'mi'),
+      item('∈ R', 132, 688, 10, 'mi'),
+      item('dmodel×dv', 150, 692, 7, 'mi'),
+      item('.', 190, 688),
+    ]);
+    expect(out).toHaveLength(1);
+    expect(out[0]!.fontSize).toBeCloseTo(10);
+  });
+
+  it('finds a bullet with a hanging indent and keeps the text column', () => {
+    const out = blocks([
+      { ...item('• In encoder-decoder attention layers, the queries come', 100, 700), width: 400 },
+      item('from the decoder.', 112, 688),
+      item('•', 100, 670),
+      item('The encoder contains self-attention layers.', 111, 670),
+    ]);
+    expect(out.map((b) => b.marker)).toEqual([
+      { text: '•', textX: 112, end: 104.5 },
+      { text: '•', textX: 111, end: 105 },
+    ]);
+  });
+
+  it('splits numbered list items; numbered headings are not list items', () => {
+    const out = blocks([
+      item('1 Introduction', 100, 730, 12, 'bold'),
+      {
+        ...item('1. Install the new client library on every worker before the', 100, 700),
+        width: 400,
+      },
+      item('server is upgraded.', 112, 688),
+      item('2. Restart the workers one at a time.', 100, 676),
+    ]);
+    expect(out.map((b) => b.text)).toEqual([
+      '1 Introduction',
+      '1. Install the new client library on every worker before the server is upgraded.',
+      '2. Restart the workers one at a time.',
+    ]);
+    expect(out[0]!.marker).toBeUndefined();
+    expect(out[1]!.marker).toEqual({ text: '1.', textX: 112, end: 110 });
+  });
+
+  it('marks centered blocks', () => {
+    const out = blocks([
+      item('Provided proper attribution is provided, Google grants', 160, 700),
+      item('permission to reproduce the tables.', 210, 688),
+    ]);
+    expect(out[0]!.centered).toBe(true);
+    expect(
+      blocks(para(['A justified line of text that fills', 'the column.'], 700))[0]!.centered,
+    ).toBeUndefined();
+  });
+
+  it('starts a new block at each footnote mark', () => {
+    const out = blocks([
+      item('†', 100, 700, 7),
+      item('Work performed while at Google Brain.', 104, 697),
+      item('‡', 100, 688, 7),
+      item('Work performed while at Google Research.', 104, 685),
+    ]);
+    expect(out.map((b) => b.text)).toEqual([
+      '†Work performed while at Google Brain.',
+      '‡Work performed while at Google Research.',
+    ]);
+  });
+
+  it('splits table cells at a rule, however close they are', () => {
+    const cells = [item('Petrov et al. (2006) [29]', 100, 700), item('WSJ only', 230, 700)];
+    expect(blocks(cells)).toHaveLength(1);
+    const rule = (x0: number, x1: number) => x0 < 228 && x1 > 228;
+    const out = extractBlocks(cells, STYLES, VT, rule);
+    expect(out.map((b) => b.text)).toEqual(['Petrov et al. (2006) [29]', 'WSJ only']);
   });
 
   it('joins CJK lines without spaces', () => {

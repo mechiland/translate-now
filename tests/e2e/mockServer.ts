@@ -40,13 +40,35 @@ export function makePdf(): Buffer {
     y -= 14;
   });
   ops.push('BT /F1 10 Tf 300 40 Td (1) Tj ET');
-  const content = ops.join('\n');
+  return pdfFile(ops.join('\n'), { F1: 'Helvetica' });
+}
+
+/**
+ * A PDF set in Times with what the translation has to carry over: a red notice, a bold
+ * run-in heading, a superscript footnote mark, inline code and a bulleted list.
+ */
+export function makeStyledPdf(): Buffer {
+  const ops = [
+    '1 0 0 rg BT /R 11 Tf 72 720 Td (Important: the old export format will be removed in the next version.) Tj ET',
+    '0 g BT /B 11 Tf 72 690 Td (Encoder:) Tj /R 11 Tf ( The encoder is composed of a stack of identical layers, and each layer) Tj ET',
+    'BT /R 11 Tf 72 676 Td (has two sub-layers with small gradients) Tj /R 7 Tf 4 Ts (4) Tj 0 Ts /R 11 Tf (. Use the) Tj /C 10 Tf ( --config ) Tj /R 11 Tf (option.) Tj ET',
+    'BT /R 11 Tf 90 640 Td (\\225 In encoder-decoder attention layers, the queries come from the previous) Tj ET',
+    'BT /R 11 Tf 99 626 Td (decoder layer, and the memory keys come from the encoder.) Tj ET',
+  ];
+  return pdfFile(ops.join('\n'), { R: 'Times-Roman', B: 'Times-Bold', C: 'Courier' });
+}
+
+function pdfFile(content: string, fonts: Record<string, string>): Buffer {
+  const names = Object.keys(fonts);
+  const fontRefs = names.map((n, i) => `/${n} ${5 + i} 0 R`).join(' ');
   const objects = [
     '<< /Type /Catalog /Pages 2 0 R >>',
     '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
-    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>',
+    `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << ${fontRefs} >> >> >>`,
     `<< /Length ${content.length} >>\nstream\n${content}\nendstream`,
-    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+    ...names.map(
+      (n) => `<< /Type /Font /Subtype /Type1 /BaseFont /${fonts[n]} /Encoding /WinAnsiEncoding >>`,
+    ),
   ];
   let out = '%PDF-1.4\n';
   const offsets: number[] = [];
@@ -112,6 +134,11 @@ export async function startMockServer(fixturesDir: string): Promise<MockServer> 
         if (mode === 'slow') setTimeout(reply, 400);
         else reply();
       });
+      return;
+    }
+    if (url.pathname === '/styled.pdf') {
+      res.writeHead(200, { ...cors, 'Content-Type': 'application/pdf' });
+      res.end(makeStyledPdf());
       return;
     }
     if (url.pathname.endsWith('.pdf') || url.pathname.startsWith('/pdf/')) {

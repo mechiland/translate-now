@@ -72,15 +72,17 @@ body,
   margin: 0;
   padding: 0 1px;
   color: #111;
+  /* CJK companions of the original's font class (Simplified Chinese unless the target
+     language says otherwise). */
+  --tn-cjk-sans:
+    'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Source Han Sans SC';
+  --tn-cjk-serif:
+    'Songti SC', 'STSong', 'SimSun', 'Noto Serif CJK SC', 'Source Han Serif SC', 'Noto Serif SC';
   font-family:
     system-ui,
     -apple-system,
     'Segoe UI',
-    'PingFang SC',
-    'Hiragino Sans GB',
-    'Microsoft YaHei',
-    'Noto Sans CJK SC',
-    'Source Han Sans SC',
+    var(--tn-cjk-sans),
     sans-serif;
   line-height: 1.25;
   white-space: pre-line;
@@ -88,6 +90,69 @@ body,
   word-break: normal;
   -webkit-print-color-adjust: exact;
   print-color-adjust: exact;
+  /* Rules (z-index -1) paint above the patch, below the text. */
+  isolation: isolate;
+}
+
+.tn-pdf-block:is(:lang(zh-TW), :lang(zh-HK), :lang(zh-Hant)) {
+  --tn-cjk-sans: 'PingFang TC', 'Microsoft JhengHei', 'Noto Sans CJK TC', 'Source Han Sans TC';
+  --tn-cjk-serif:
+    'Songti TC', 'PMingLiU', 'MingLiU', 'Noto Serif CJK TC', 'Source Han Serif TC', 'Noto Serif TC';
+}
+
+.tn-pdf-block:lang(ja) {
+  --tn-cjk-sans:
+    'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Yu Gothic', 'Meiryo', 'Noto Sans CJK JP';
+  --tn-cjk-serif:
+    'Hiragino Mincho ProN', 'Yu Mincho', 'MS Mincho', 'Noto Serif CJK JP', 'Noto Serif JP';
+}
+
+.tn-pdf-block:lang(ko) {
+  --tn-cjk-sans: 'Apple SD Gothic Neo', 'Malgun Gothic', 'Noto Sans CJK KR';
+  --tn-cjk-serif: 'AppleMyungjo', 'Batang', 'Noto Serif CJK KR', 'Noto Serif KR';
+}
+
+.tn-pdf-block[data-family='serif'] {
+  font-family:
+    'Times New Roman', Times, 'Nimbus Roman', 'Liberation Serif', var(--tn-cjk-serif), serif;
+}
+
+.tn-pdf-block[data-family='mono'],
+.tn-pdf-code {
+  font-family:
+    ui-monospace, 'SF Mono', Menlo, Consolas, 'Liberation Mono', var(--tn-cjk-sans), monospace;
+}
+
+/* An inline formula: its spot of the page bitmap (see PdfViewer.mathElement). */
+.tn-pdf-math {
+  display: inline-block;
+  overflow: hidden;
+  white-space: nowrap;
+  color: transparent;
+  font-weight: normal;
+  text-align: left;
+  background-image: var(--tn-page);
+  background-repeat: no-repeat;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+/* A table rule under a translated paragraph, from the text-free page bitmap. */
+.tn-pdf-rule {
+  position: absolute;
+  z-index: -1;
+  background-image: var(--tn-bare);
+  background-repeat: no-repeat;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+.tn-pdf-nowrap {
+  white-space: nowrap;
+}
+
+.tn-pdf-math::selection {
+  color: transparent;
 }
 
 .tn-pdf-block.tn-pending {

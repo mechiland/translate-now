@@ -507,6 +507,43 @@ test('PDF viewer translates paragraphs side by side and skips page numbers', asy
   await expect(page.locator('.pdf-translated')).toBeVisible();
 });
 
+test('PDF translation keeps fonts, colors, bold runs, formulas and list markers', async ({
+  context,
+  sw,
+  server,
+}) => {
+  await configure(sw, baseSettings(server));
+  const page = await openViewer(context, sw, `${server.url}/styled.pdf`);
+  const done = page.locator('.pdf-translated .tn-pdf-block.tn-done');
+  await expect(done).toHaveCount(3);
+  // Times → serif, red stays red.
+  await expect(done.nth(0)).toHaveAttribute('data-family', 'serif');
+  expect(await done.nth(0).evaluate((e) => getComputedStyle(e).color)).toMatch(
+    /^rgb\(2[0-5]\d, \d{1,2}, \d{1,2}\)$/,
+  );
+  // The bold run-in heading, the footnote mark and the inline code went to the model
+  // as tags and came back with their style.
+  const sent = server.requests.map((r) => r.user).join('\n');
+  expect(sent).toContain('<a id="1">Encoder:</a> The encoder');
+  expect(sent).toMatch(/gradients ?<m id="1"\/>\. Use the <a id="2">--config<\/a> option\./);
+  const para = done.nth(1);
+  await expect(para.locator('b')).toHaveText('Encoder:');
+  await expect(para.locator('.tn-pdf-code')).toHaveText('--config');
+  const mark = para.locator('.tn-pdf-math');
+  await expect(mark).toHaveText('4');
+  expect(await mark.evaluate((e) => getComputedStyle(e).backgroundImage)).toMatch(/^url\("blob:/);
+  // The bullet stays on the page; the item's text hangs beside it.
+  const item = done.nth(2);
+  await expect(item).not.toContainText('•');
+  const { left, textLeft } = await item.evaluate((e) => ({
+    left: parseFloat(e.style.left) / 2,
+    textLeft: (parseFloat(e.style.left) + parseFloat(e.style.paddingLeft)) / 2,
+  }));
+  expect(left).toBeGreaterThan(93); // right of the bullet at x = 90
+  expect(textLeft).toBeCloseTo(99, 0); // the text column of the item's second line
+  await shot(page, 'pdf-styled');
+});
+
 test('PDF viewer answers popup commands and exports through the print dialog', async ({
   context,
   sw,
