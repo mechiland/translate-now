@@ -140,6 +140,46 @@ describe('createMirrorLink & renderTranslatedContent', () => {
   });
 });
 
+describe('formula placeholders', () => {
+  it('puts a copy of each formula at its placeholder, also next to links', () => {
+    document.body.innerHTML =
+      '<p>Side <math id="m1"><mn id="m1.n">2.5</mn></math> km, TDI-<math><mi>∞</mi><annotation>\\infty</annotation></math> (<a href="#b">ref</a>)</p>';
+    const p = document.querySelector('p')!;
+    const [m1, m2] = [...p.querySelectorAll('math')];
+    const span = document.createElement('span');
+    renderTranslatedContent(
+      document,
+      span,
+      '边长 <m id="1"/> 公里，TDI-<m id=2></m>（<a id="1">文献 <m id="2"/></a>）<m id="9"/></m>',
+      { plainText: '', block: p, links: [p.querySelector('a')!], atoms: [m1!, m2!] },
+    );
+    const copies = [...span.querySelectorAll('math')];
+    expect(copies).toHaveLength(2);
+    expect(copies[0]!.textContent).toBe('2.5');
+    // Copies don't duplicate the original ids.
+    expect(span.querySelectorAll('[id]')).toHaveLength(0);
+    expect(span.querySelector('a')!.textContent).toBe('文献 ∞');
+    expect(span.textContent).toBe('边长 2.5 公里，TDI-∞\\infty（文献 ∞）');
+  });
+
+  it('renders formulas in segments without links', () => {
+    document.body.innerHTML = '<p>x <math><mi>y</mi></math></p>';
+    const p = document.querySelector('p')!;
+    const span = document.createElement('span');
+    renderTranslatedContent(document, span, '甲 <m id="1"/> 乙', {
+      plainText: 'x y',
+      block: p,
+      links: [],
+      atoms: [p.querySelector('math')!],
+    });
+    expect([...span.childNodes].map((n) => n.nodeName.toLowerCase())).toEqual([
+      '#text',
+      'math',
+      '#text',
+    ]);
+  });
+});
+
 describe('PageTranslator link preservation', () => {
   function makeTranslator(translate: (texts: string[]) => Promise<string[]>) {
     return new PageTranslator(document, {

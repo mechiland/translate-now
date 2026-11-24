@@ -35,6 +35,7 @@ export function buildPageSystemPrompt(ctx: PromptContext): string {
     `- Translate each segment independently but keep terminology consistent across segments.\n` +
     `- Keep line breaks inside a segment. Keep URLs, email addresses, code, numbers and emoji unchanged.\n` +
     `- Some segments contain inline <a id="N">...</a> link tags. Keep every <a id="N">...</a> tag with the same id wrapped around the corresponding translated link text; do not add attributes or drop tags.\n` +
+    `- Some segments contain self-closing <m id="N"/> placeholders for formulas. Keep every placeholder exactly once and unchanged, at the position where the formula belongs in the translated sentence.\n` +
     `- If a segment is already in ${lang} or cannot be translated (e.g. a name or code), output it unchanged.\n\n` +
     `Style: ${ctx.styleInstruction}` +
     glossaryBlock(ctx.glossary) +

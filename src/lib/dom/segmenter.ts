@@ -142,6 +142,11 @@ export interface Segment {
   /** Inline `<a href>` elements referenced by `<a id="1">...</a>`..`<a id="K">...</a>` in `payload`. */
   links: HTMLAnchorElement[];
   /**
+   * Inline formulas (`<math>`) referenced by `<m id="1"/>`..`<m id="K"/>` in `payload`. They are
+   * not translated; the translation gets a copy of each one at the placeholder's position.
+   */
+  atoms: Element[];
+  /**
    * Set when a single `<a href>` covers all text in the segment (and the translation is not
    * already inserted inside a link). In this case `payload === text` and the translated text
    * is wrapped in a clone of this link.
@@ -239,7 +244,13 @@ function isBlockDisplay(display: string, el: Element): boolean {
   if (!display) return FALLBACK_BLOCK_TAGS.has(el.localName);
   if (display === 'contents') return false;
   if (display.startsWith('inline')) return false;
-  if (display === 'ruby' || display.startsWith('ruby-')) return false;
+  // Multi-keyword values ("block math", "inline flow-root") name the outer display explicitly.
+  const words = display.split(/\s+/);
+  if (words.includes('inline')) return false;
+  if (words.includes('block')) return true;
+  // An inner display on its own: "ruby" and "math" (inline <math>) are inline-level, the rest block.
+  const inner = words[0]!;
+  if (inner === 'math' || inner === 'ruby' || inner.startsWith('ruby-')) return false;
   return true;
 }
 
@@ -284,6 +295,30 @@ function isFlowContainer(style: ElementStyle): boolean {
 interface RunPiece {
   text: string;
   link?: HTMLAnchorElement;
+  /** An inline formula kept as a placeholder; `text` is its readable text. */
+  atom?: Element;
+}
+
+/** Elements kept whole (as a placeholder) inside a translated sentence. */
+const ATOM_TAGS = new Set(['math']);
+/** Placeholder chars for atoms while the payload is built: one private-use char per atom. */
+const ATOM_BASE = 0xe100;
+const MAX_ATOMS = 0x100;
+const ATOM_CHAR_RE = /[\uE100-\uE1FF]/g;
+
+/** The visible text of a formula, without its TeX/MathML source annotations. */
+export function atomText(el: Element): string {
+  let out = '';
+  const walk = (n: Node) => {
+    if (n.nodeType === 3) out += (n as Text).data;
+    else if (n.nodeType === 1) {
+      const tag = (n as Element).localName;
+      if (tag === 'annotation' || tag === 'annotation-xml') return;
+      for (const c of Array.from(n.childNodes)) walk(c);
+    }
+  };
+  walk(el);
+  return out.replace(/\s+/g, '');
 }
 
 interface Run {
@@ -361,6 +396,31 @@ function buildLinkPayload(
   };
 }
 
+/** The translation payload of a run: link markers plus `<m id="N"/>` formula placeholders. */
+function buildPayload(
+  pieces: RunPiece[],
+  plainText: string,
+  alreadyInLink: boolean,
+): { payload: string; links: HTMLAnchorElement[]; wrapLink?: HTMLAnchorElement; atoms: Element[] } {
+  const atoms: Element[] = [];
+  for (const p of pieces) {
+    if (p.atom && atoms.length < MAX_ATOMS) atoms.push(p.atom);
+  }
+  if (atoms.length === 0) return { ...buildLinkPayload(pieces, plainText, alreadyInLink), atoms };
+  let i = 0;
+  const marked = pieces.map((p): RunPiece => {
+    if (!p.atom || i >= MAX_ATOMS) return p;
+    return { text: String.fromCharCode(ATOM_BASE + i++), link: p.link };
+  });
+  const markedText = normalizeText(marked.map((p) => p.text).join(''));
+  const res = buildLinkPayload(marked, markedText, alreadyInLink);
+  const payload = res.payload.replace(
+    ATOM_CHAR_RE,
+    (c) => `<m id="${c.charCodeAt(0) - ATOM_BASE + 1}"/>`,
+  );
+  return { payload, links: res.links, atoms };
+}
+
 export function collectSegments(root: Element, opts: SegmenterOptions = {}): Segment[] {
   const minLength = opts.minLength ?? 2;
   const styleCache = new Map<Element, ElementStyle>();
@@ -402,7 +462,7 @@ export function collectSegments(root: Element, opts: SegmenterOptions = {}): Seg
         const placement = placementFor(block, text);
         const insertionParent = placement === 'after' ? block.parentElement : block;
         const alreadyInLink = Boolean(insertionParent?.closest('a[href]'));
-        const { payload, links, wrapLink } = buildLinkPayload(r.pieces, text, alreadyInLink);
+        const { payload, links, wrapLink, atoms } = buildPayload(r.pieces, text, alreadyInLink);
         blockSegments.push({
           block,
           nodes: r.nodes,
@@ -410,6 +470,7 @@ export function collectSegments(root: Element, opts: SegmenterOptions = {}): Seg
           text,
           payload,
           links,
+          atoms,
           wrapLink,
           // Translation-only mode hides the original inside the block; not possible when the
           // translation lives outside it (the block may be a button the user still needs).
@@ -465,6 +526,18 @@ export function collectSegments(root: Element, opts: SegmenterOptions = {}): Seg
         if (block) {
           flush();
           interrupted = true;
+          return;
+        }
+        if (ATOM_TAGS.has(tag)) {
+          // An inline formula is part of the sentence: keep its place with a placeholder (or,
+          // inside a link, whose text is plain, with its readable text).
+          const t = atomText(el);
+          if (t)
+            current(top).pieces.push({
+              text: t,
+              link: activeLink,
+              atom: activeLink ? undefined : el,
+            });
           return;
         }
         const keepText =

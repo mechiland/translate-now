@@ -255,9 +255,10 @@ export class PageTranslator {
         existing.textNodes = seg.textNodes;
         existing.fullBlock = seg.fullBlock;
         existing.placement = seg.placement;
-        if (!sameLinks(existing, seg)) {
+        if (!sameInlineElements(existing, seg)) {
           existing.links = seg.links;
           existing.wrapLink = seg.wrapLink;
+          existing.atoms = seg.atoms;
           const cached = this.memory.get(existing.payload);
           if (existing.status === 'done' && cached !== undefined) this.renderDone(existing, cached);
         }
@@ -464,6 +465,7 @@ export class PageTranslator {
       block: unit.block,
       links: unit.links,
       wrapLink: unit.wrapLink,
+      atoms: unit.atoms,
     });
     el.replaceChildren(span);
     if (unit.fullBlock) {
@@ -503,9 +505,11 @@ export class PageTranslator {
   }
 }
 
-function sameLinks(a: Segment, b: Segment): boolean {
+/** Same links and formulas, so an existing translation still points at the right elements. */
+function sameInlineElements(a: Segment, b: Segment): boolean {
   if (a.wrapLink !== b.wrapLink || a.links.length !== b.links.length) return false;
-  return a.links.every((el, i) => el === b.links[i]);
+  if (a.atoms.length !== b.atoms.length) return false;
+  return a.links.every((el, i) => el === b.links[i]) && a.atoms.every((el, i) => el === b.atoms[i]);
 }
 
 function closestTranslation(node: Node): HTMLElement | undefined {

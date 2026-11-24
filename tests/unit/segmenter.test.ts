@@ -292,6 +292,53 @@ describe('links', () => {
   });
 });
 
+describe('math', () => {
+  /** Chromium's computed display for MathML: "math" when inline, "block math" when display=block. */
+  const mathDisplay = (el: Element) =>
+    el.localName === 'math'
+      ? el.getAttribute('display') === 'block'
+        ? 'block math'
+        : 'math'
+      : getDisplay(el);
+  const mathSegs = (html: string) => {
+    document.body.innerHTML = html;
+    return collectSegments(document.body, { getDisplay: mathDisplay });
+  };
+  const inlineMath = (tex: string, body: string) =>
+    `<math display="inline"><semantics>${body}<annotation encoding="application/x-tex">${tex}</annotation></semantics></math>`;
+
+  it('keeps inline formulas inside the sentence as placeholders (arXiv HTML)', () => {
+    const s = mathSegs(
+      `<p>A triangle of side ${inlineMath('\\sim 2.5', '<mrow><mo>∼</mo><mn>2.5</mn></mrow>')} million kilometres. ` +
+        `Another approach, TDI-${inlineMath('\\infty', '<mi>∞</mi>')} <cite>(<a href="#b10">Vallisneri et al., 2021</a>)</cite>, builds on it.</p>`,
+    );
+    expect(s).toHaveLength(1);
+    expect(s[0]!.text).toBe(
+      'A triangle of side ∼2.5 million kilometres. Another approach, TDI-∞ (Vallisneri et al., 2021), builds on it.',
+    );
+    expect(s[0]!.payload).toBe(
+      'A triangle of side <m id="1"/> million kilometres. Another approach, TDI-<m id="2"/> (<a id="1">Vallisneri et al., 2021</a>), builds on it.',
+    );
+    expect(s[0]!.atoms.map((m) => m.localName)).toEqual(['math', 'math']);
+    // Translation-only mode may still hide the original: the formulas are copied over.
+    expect(s[0]!.fullBlock).toBe(true);
+  });
+
+  it('splits paragraphs around display formulas', () => {
+    const s = mathSegs(
+      '<p>The likelihood is <math display="block"><mi>L</mi></math> where L is the likelihood.</p>',
+    );
+    expect(s.map((x) => x.text)).toEqual(['The likelihood is', 'where L is the likelihood.']);
+    expect(s.every((x) => x.atoms.length === 0)).toBe(true);
+  });
+
+  it('keeps a formula inside a link as plain link text', () => {
+    const s = mathSegs(`<p>See <a href="/x">case ${inlineMath('n', '<mi>n</mi>')}</a> below.</p>`);
+    expect(s[0]!.payload).toBe('See <a id="1">case n</a> below.');
+    expect(s[0]!.atoms).toEqual([]);
+  });
+});
+
 describe('isShortSnippet', () => {
   it('detects short labels', async () => {
     const { isShortSnippet } = await import('@/lib/dom/segmenter');
