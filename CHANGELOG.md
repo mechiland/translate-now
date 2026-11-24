@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.5.0](https://github.com/mechiland/translate-now/compare/v0.4.0...v0.5.0) (2026-11-24)
+
+
+### Features
+
+* keep the look of LaTeXML glossary terms, italics and code in translations ([#21](https://github.com/mechiland/translate-now/issues/21)) ([41f5c57](https://github.com/mechiland/translate-now/commit/41f5c57b724dc34c0f3d7267634758748fd85161))
+* turn off model thinking by default for faster translation ([#23](https://github.com/mechiland/translate-now/issues/23)) ([f919877](https://github.com/mechiland/translate-now/commit/f9198775bef35630cf381b86ed19cf83e2de41e8))
+
+
+### Bug Fixes
+
+* keep fonts, colors, formulas, lists and table rules in PDF translations ([#22](https://github.com/mechiland/translate-now/issues/22)) ([a49d2cf](https://github.com/mechiland/translate-now/commit/a49d2cf5f5bff30b958effe5eecaa3f835f0389b))
+* keep inline math formulas inside translated paragraphs ([#19](https://github.com/mechiland/translate-now/issues/19)) ([8eaecf8](https://github.com/mechiland/translate-now/commit/8eaecf86bcb343b702377b252fbae01f5a9413e5))
+
 ## [0.4.0](https://github.com/mechiland/translate-now/compare/v0.3.4...v0.4.0) (2026-11-23)
 
 
