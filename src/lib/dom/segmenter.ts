@@ -67,6 +67,8 @@ const TEXT_INLINE_TAGS = new Set([
   'ins',
   'kbd',
   'mark',
+  // Only reached when laid out inline, e.g. paragraphs run together in a clamped preview.
+  'p',
   'q',
   's',
   'samp',
@@ -173,6 +175,8 @@ export interface ElementStyle {
   flexDirection?: string;
   /** Visually hidden (visibility: hidden, or an sr-only style 1px/clipped box). */
   hidden?: boolean;
+  /** Line breaks in the text are shown (white-space: pre-wrap / pre-line / break-spaces). */
+  keepsNewlines?: boolean;
 }
 
 export interface SegmenterOptions {
@@ -272,12 +276,37 @@ function isVisuallyHidden(cs: CSSStyleDeclaration): boolean {
   return /^rect\(\s*0(px)?[\s,]+0(px)?[\s,]+0(px)?[\s,]+0(px)?\s*\)$/.test(cs.clip);
 }
 
+function keepsNewlines(cs: CSSStyleDeclaration): boolean {
+  const collapse = cs.getPropertyValue('white-space-collapse');
+  if (collapse) return collapse !== 'collapse';
+  return /^(pre|break-spaces)/.test(cs.whiteSpace);
+}
+
+/**
+ * Attribute set on a block whose original text is hidden in translation-only mode. Our CSS
+ * gives its children `display: none`, which must not make the segmenter lose the original text.
+ */
+export const HIDE_ATTR = 'data-tn-hide';
+
+function hiddenByUs(el: Element): boolean {
+  const parent = el.parentElement;
+  return (
+    !!parent?.hasAttribute(HIDE_ATTR) &&
+    el.ownerDocument.documentElement.getAttribute('data-tn-mode') === 'translation-only'
+  );
+}
+
 function defaultGetStyle(el: Element): ElementStyle {
   const view = el.ownerDocument.defaultView;
   if (!view) return { display: '' };
   try {
     const cs = view.getComputedStyle(el);
-    return { display: cs.display, flexDirection: cs.flexDirection, hidden: isVisuallyHidden(cs) };
+    return {
+      display: cs.display,
+      flexDirection: cs.flexDirection,
+      hidden: isVisuallyHidden(cs),
+      keepsNewlines: keepsNewlines(cs),
+    };
   } catch {
     return { display: '' };
   }
@@ -442,6 +471,11 @@ export function collectSegments(root: Element, opts: SegmenterOptions = {}): Seg
     let st = styleCache.get(el);
     if (st === undefined) {
       st = readStyle(el);
+      // Hidden by our translation-only CSS, not by the page. Such a block only ever held
+      // inline text (see `fullBlock`), so treat the child as the inline text it was.
+      if (st.display === 'none' && el.localName !== TRANSLATION_TAG && hiddenByUs(el)) {
+        st = { ...st, display: 'inline' };
+      }
       styleCache.set(el, st);
     }
     return st;
@@ -505,13 +539,18 @@ export function collectSegments(root: Element, opts: SegmenterOptions = {}): Seg
       activeMark: Element | undefined = undefined,
     ): void => {
       if (node.nodeType === 3) {
-        const data = (node as Text).data;
+        let data = (node as Text).data;
+        // Text that shows its line breaks (posts on social sites): keep them as <br>s.
+        const parent = node.parentElement;
+        if (data.includes('\n') && parent && getStyle(parent).keepsNewlines) {
+          data = data.replace(/\r?\n/g, BR_MARK);
+        }
         if (/\S/.test(data)) {
           const r = current(top);
           r.pieces.push({ text: data, mark: activeMark });
           r.textNodes.push(node as Text);
         } else if (run) {
-          run.pieces.push({ text: ' ', mark: activeMark });
+          run.pieces.push({ text: data.includes(BR_MARK) ? data : ' ', mark: activeMark });
         }
         return;
       }

@@ -4,8 +4,9 @@ const T = TRANSLATION_TAG;
 
 /** CSS injected into the page while translation is active. Scoped to our own tag/attributes. */
 export const PAGE_CSS = `
+/* display is !important: pages restyle every child of a container (e.g. "> * { display: inline }"). */
 ${T} {
-  display: block;
+  display: block !important;
   margin: 0.3em 0 0.1em;
   white-space: pre-line;
   word-break: normal;
@@ -16,7 +17,7 @@ ${T} {
   text-align: start;
   unicode-bidi: plaintext;
 }
-${T}.tn-inline { display: inline; margin: 0 0 0 0.4em; }
+${T}.tn-inline { display: inline !important; margin: 0 0 0 0.4em; }
 html[data-tn-theme="dimmed"] ${T}.tn-done { opacity: 0.78; }
 html[data-tn-theme="underline"] ${T}.tn-done .tn-text {
   text-decoration: underline dashed rgba(120, 120, 120, 0.6);
@@ -35,7 +36,7 @@ html[data-tn-theme="border"] ${T}.tn-done:not(.tn-inline) {
 }
 html[data-tn-theme="italic"] ${T}.tn-done { font-style: italic; }
 
-${T}.tn-loading { display: inline-block; margin-inline-start: 0.4em; vertical-align: middle; }
+${T}.tn-loading { display: inline-block !important; margin-inline-start: 0.4em; vertical-align: middle; }
 ${T}.tn-loading::after {
   content: "";
   display: inline-block;
@@ -48,7 +49,7 @@ ${T}.tn-loading::after {
 @keyframes tn-spin { to { transform: rotate(360deg); } }
 
 ${T}.tn-error {
-  display: inline-block;
+  display: inline-block !important;
   margin-inline-start: 0.4em;
   font-size: 12px;
   font-weight: normal;
@@ -64,11 +65,15 @@ html[data-tn-mode="translation-only"] [data-tn-hide] {
   /* em-based spacing would collapse with font-size 0; restore the measured px values */
   margin: var(--tn-m) !important;
   padding: var(--tn-p) !important;
+  min-width: var(--tn-minw) !important;
+  max-width: var(--tn-maxw) !important;
 }
 html[data-tn-mode="translation-only"] [data-tn-hide] > :not(${T}) { display: none !important; }
 html[data-tn-mode="translation-only"] [data-tn-hide] > ${T} {
   display: inline !important;
   font-size: var(--tn-fs, 16px) !important;
+  line-height: var(--tn-lh, normal) !important;
+  letter-spacing: var(--tn-ls, normal) !important;
   margin: 0 !important;
   opacity: 1 !important;
   border: 0 !important;

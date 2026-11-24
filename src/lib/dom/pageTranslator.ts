@@ -7,6 +7,7 @@ import { renderTranslatedContent } from './links';
 import { PAGE_CSS } from './pageStyles';
 import {
   collectSegments,
+  HIDE_ATTR,
   isBlockLevel,
   isInsideInjected,
   isShortSnippet,
@@ -305,11 +306,13 @@ export class PageTranslator {
     unit.el = undefined;
     unit.status = 'idle';
     unit.error = undefined;
-    if (unit.block.hasAttribute('data-tn-hide')) {
-      unit.block.removeAttribute('data-tn-hide');
+    if (unit.block.hasAttribute(HIDE_ATTR)) {
+      unit.block.removeAttribute(HIDE_ATTR);
       const style = (unit.block as HTMLElement).style;
       style?.removeProperty('--tn-m');
       style?.removeProperty('--tn-p');
+      style?.removeProperty('--tn-minw');
+      style?.removeProperty('--tn-maxw');
       style?.removeProperty('--tn-marker-fs');
     }
   }
@@ -470,9 +473,14 @@ export class PageTranslator {
     el.replaceChildren(span);
     if (unit.fullBlock) {
       const view = this.doc.defaultView;
+      // Measure the block as the page styles it, not as hidden by translation-only mode
+      // (font-size 0), e.g. when an already translated paragraph is rendered again.
+      unit.block.removeAttribute(HIDE_ATTR);
       const cs = view?.getComputedStyle(unit.block);
       if (cs) {
         el.style.setProperty('--tn-fs', cs.fontSize);
+        // em-based line heights would compute to 0 under font-size 0 and stack the lines.
+        el.style.setProperty('--tn-lh', cs.lineHeight);
         const block = unit.block as HTMLElement;
         block.style.setProperty(
           '--tn-m',
@@ -482,9 +490,12 @@ export class PageTranslator {
           '--tn-p',
           `${cs.paddingTop} ${cs.paddingRight} ${cs.paddingBottom} ${cs.paddingLeft}`,
         );
+        block.style.setProperty('--tn-minw', cs.minWidth);
+        block.style.setProperty('--tn-maxw', cs.maxWidth);
+        el.style.setProperty('--tn-ls', cs.letterSpacing);
         if (unit.block.localName === 'li') block.style.setProperty('--tn-marker-fs', cs.fontSize);
       }
-      unit.block.setAttribute('data-tn-hide', '');
+      unit.block.setAttribute(HIDE_ATTR, '');
     }
   }
 
