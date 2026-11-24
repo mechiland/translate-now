@@ -162,6 +162,11 @@ export interface Segment {
   /** True when this run is the only content of the block and the block holds only text-level elements. */
   fullBlock: boolean;
   /**
+   * Children of the block without any text (icons, images, inputs). They don't stop
+   * translation-only mode from hiding the original text; they stay visible next to the translation.
+   */
+  decor: Element[];
+  /**
    * Where the translation goes: inside the block right after the run (default), or right
    * after the block itself when the block lays its children out in a row (flex/grid), where an
    * extra child would end up beside the text instead of below it.
@@ -361,6 +366,27 @@ interface Run {
   pieces: RunPiece[];
   textNodes: Text[];
   textOnly: boolean;
+  decor: Element[];
+}
+
+/** A child element without text: an icon, image or control shown beside a label. */
+function isDecor(node: Node): node is Element {
+  if (node.nodeType !== 1) return false;
+  const tag = (node as Element).localName;
+  if (tag === 'br' || tag === 'wbr' || tag === TRANSLATION_TAG || tag === UI_TAG) return false;
+  return !/\S/.test(node.textContent ?? '');
+}
+
+/** Inline elements that are only text for translation-only purposes, besides `TEXT_INLINE_TAGS`. */
+function isTextLevel(tag: string): boolean {
+  // <li> laid out inline (horizontal lists), and custom elements that render text
+  // (<relative-time>); interactive descendants are caught on their own.
+  return TEXT_INLINE_TAGS.has(tag) || tag === 'li' || tag.includes('-');
+}
+
+/** An inline box that lays out its own content: it can hold a translation inside itself. */
+function isInlineBox(display: string): boolean {
+  return display === 'inline-block' || display === 'inline-flex' || display === 'inline-grid';
 }
 
 export function isLinkElement(el: Element): el is HTMLAnchorElement {
@@ -490,12 +516,31 @@ export function collectSegments(root: Element, opts: SegmenterOptions = {}): Seg
   };
   const out: Segment[] = [];
 
+  /** The inline box holding all of `node`'s text, possibly inside plain inline wrappers (<a><button>). */
+  const innerBox = (node: Node): Element | undefined => {
+    let n: Node = node;
+    for (let depth = 0; depth < 6 && n.nodeType === 1; depth++) {
+      const el = n as Element;
+      if (isSkipped(el)) return undefined;
+      const display = getDisplay(el);
+      if (isInlineBox(display)) return el;
+      if (display !== 'inline' && display !== 'contents') return undefined;
+      const kids = Array.from(el.childNodes).filter((c) =>
+        c.nodeType === 1 ? !isDecor(c) : /\S/.test(c.textContent ?? ''),
+      );
+      if (kids.length !== 1) return undefined;
+      n = kids[0]!;
+    }
+    return undefined;
+  };
+
   const scanBlock = (block: Element): void => {
     let run: Run | null = null;
     let runCount = 0;
     let interrupted = false;
     const blockSegments: Segment[] = [];
     const blockLink = isLinkElement(block) ? block : undefined;
+    let pendingDecor: Element[] = [];
 
     const flush = () => {
       if (!run) return;
@@ -520,13 +565,14 @@ export function collectSegments(root: Element, opts: SegmenterOptions = {}): Seg
           // Translation-only mode hides the original inside the block; not possible when the
           // translation lives outside it (the block may be a button the user still needs).
           fullBlock: r.textOnly && placement === 'inside',
+          decor: r.decor,
           placement,
         });
       }
     };
 
     const current = (top: Node): Run => {
-      if (!run) run = { nodes: [], pieces: [], textNodes: [], textOnly: true };
+      if (!run) run = { nodes: [], pieces: [], textNodes: [], textOnly: true, decor: [] };
       if (run.nodes[run.nodes.length - 1] !== top) run.nodes.push(top);
       return run;
     };
@@ -620,7 +666,7 @@ export function collectSegments(root: Element, opts: SegmenterOptions = {}): Seg
         scanBlock(el);
         return;
       }
-      if (!TEXT_INLINE_TAGS.has(tag)) {
+      if (!isTextLevel(tag)) {
         // Unknown inline element (custom element, label, etc.)
         current(top).textOnly = false;
       }
@@ -629,10 +675,40 @@ export function collectSegments(root: Element, opts: SegmenterOptions = {}): Seg
       for (const child of Array.from(el.childNodes)) visit(child, top, flatten, nextMark);
     };
 
-    for (const child of Array.from(block.childNodes)) visit(child, child, false, blockLink);
+    for (const child of Array.from(block.childNodes)) {
+      if (isDecor(child) && getDisplay(child) !== 'none') {
+        const open = run as Run | null;
+        if (open) {
+          open.nodes.push(child);
+          open.decor.push(child);
+        } else {
+          pendingDecor.push(child);
+        }
+        continue;
+      }
+      if (pendingDecor.length && (child.nodeType === 1 || /\S/.test(child.textContent ?? ''))) {
+        // Icons before the label: they belong to the run that starts here.
+        const r = current(child);
+        r.decor.push(...pendingDecor);
+        r.nodes.unshift(...pendingDecor);
+        pendingDecor = [];
+      }
+      visit(child, child, false, blockLink);
+    }
     flush();
 
     const sole = runCount === 1 && !interrupted;
+    // The whole run is one inline box (a button, a pill): translate inside it, so the
+    // translation becomes part of the box instead of trailing after it.
+    const only = blockSegments[0];
+    if (sole && blockSegments.length === 1 && only) {
+      const nodes = only.nodes.filter((n) => !only.decor.includes(n as Element));
+      const box = nodes.length === 1 ? innerBox(nodes[0]!) : undefined;
+      if (box) {
+        scanBlock(box);
+        return;
+      }
+    }
     for (const seg of blockSegments) {
       seg.fullBlock = seg.fullBlock && sole;
       out.push(seg);
