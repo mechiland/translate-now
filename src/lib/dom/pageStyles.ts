@@ -64,11 +64,15 @@ html[data-tn-mode="translation-only"] [data-tn-hide] {
   /* em-based spacing would collapse with font-size 0; restore the measured px values */
   margin: var(--tn-m) !important;
   padding: var(--tn-p) !important;
+  min-width: var(--tn-minw) !important;
+  max-width: var(--tn-maxw) !important;
 }
 html[data-tn-mode="translation-only"] [data-tn-hide] > :not(${T}) { display: none !important; }
 html[data-tn-mode="translation-only"] [data-tn-hide] > ${T} {
   display: inline !important;
   font-size: var(--tn-fs, 16px) !important;
+  line-height: var(--tn-lh, normal) !important;
+  letter-spacing: var(--tn-ls, normal) !important;
   margin: 0 !important;
   opacity: 1 !important;
   border: 0 !important;

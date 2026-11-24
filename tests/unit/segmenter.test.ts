@@ -404,3 +404,62 @@ describe('isShortSnippet', () => {
     expect(isShortSnippet('Line one\nLine two')).toBe(false);
   });
 });
+
+describe('social posts', () => {
+  /** `white-space` and display come from inline styles, like computed styles would. */
+  function styled(html: string) {
+    document.body.innerHTML = html;
+    return collectSegments(document.body, {
+      getStyle: (el) => {
+        const st = (el as HTMLElement).style;
+        const ws = st?.whiteSpace || (el.closest('[style*="pre-wrap"]') ? 'pre-wrap' : '');
+        return {
+          display: st?.display || getDisplay(el),
+          keepsNewlines: /^(pre|break-spaces)/.test(ws),
+        };
+      },
+    });
+  }
+
+  it('keeps the line breaks of text shown with white-space: pre-wrap', () => {
+    const s = styled(
+      '<div style="white-space:pre-wrap"><span>Three things:\n\n- one\n- two</span></div>',
+    );
+    expect(s).toHaveLength(1);
+    expect(s[0]!.text).toBe('Three things:\n\n- one\n- two');
+    expect(s[0]!.payload).toBe('Three things:\n\n- one\n- two');
+  });
+
+  it('keeps line breaks around links in pre-wrap text', () => {
+    const s = styled(
+      '<div style="white-space:pre-wrap"><span>First line\n</span><a href="/x">a link</a><span>\nlast line</span></div>',
+    );
+    expect(s[0]!.payload).toBe('First line\n<a id="1">a link</a>\nlast line');
+  });
+
+  it('still collapses line breaks in normal text', () => {
+    const s = styled('<p>Wrapped\nsource\ntext</p>');
+    expect(s[0]!.text).toBe('Wrapped source text');
+  });
+
+  it('still finds the original text that translation-only mode hides', () => {
+    document.documentElement.setAttribute('data-tn-mode', 'translation-only');
+    try {
+      document.body.innerHTML =
+        '<div data-tn-hide><span>Hidden original text</span><tn-translation>译文</tn-translation></div>';
+      const s = collectSegments(document.body, {
+        getStyle: (el) => ({
+          // What our CSS does to the children of a hidden block.
+          display:
+            el.parentElement?.hasAttribute('data-tn-hide') && el.localName !== 'tn-translation'
+              ? 'none'
+              : getDisplay(el),
+        }),
+      });
+      expect(s.map((x) => x.text)).toEqual(['Hidden original text']);
+      expect(s[0]!.fullBlock).toBe(true);
+    } finally {
+      document.documentElement.removeAttribute('data-tn-mode');
+    }
+  });
+});
