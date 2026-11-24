@@ -120,6 +120,61 @@ test('translation-only mode hides the original; toggling again restores the page
   await expect(page.locator('#p2 b')).toBeVisible();
 });
 
+test('translations follow the look of the original and never break into a column', async ({
+  context,
+  sw,
+  server,
+}) => {
+  server.setMode('cjk');
+  await configure(sw, baseSettings(server));
+  const page = await context.newPage();
+  await page.setViewportSize({ width: 1000, height: 800 });
+  await page.goto(`${server.url}/layout.html`);
+  await expect.poll(() => sendToPageState(page).catch(() => null)).toBeTruthy();
+  await sendToPage(sw, page.url(), { type: 'page:toggle' });
+
+  const style = (id: string, prop: string) =>
+    translationOf(page, id).evaluate(
+      (el, prop) => getComputedStyle(el).getPropertyValue(prop),
+      prop,
+    );
+  await expect(translationOf(page, 'center')).toBeVisible();
+  expect(await style('center', 'text-align')).toBe('center');
+  // The text sits in a styled span: the translation takes that span's size, weight and color.
+  await expect(translationOf(page, 'ticker')).toBeVisible();
+  expect(await style('ticker', 'font-size')).toBe('11px');
+  expect(await style('ticker', 'font-weight')).toBe('700');
+  expect(await style('ticker', 'color')).toBe('rgb(200, 0, 0)');
+  // The whole run is an inline-block button: the translation goes inside it.
+  await expect(translationOf(page, 'pill')).toBeVisible();
+  // Repeating the original adds nothing.
+  await expect(page.locator('#same tn-translation')).toHaveCount(0);
+  // A box too narrow for the translation keeps just the original.
+  await expect(page.locator('#tabs > tn-translation.tn-squeezed')).toHaveCount(1);
+  await expect(page.locator('#tabs > tn-translation')).toBeHidden();
+
+  await sw.evaluate(async () => {
+    const { settings } = await chrome.storage.local.get('settings');
+    await chrome.storage.local.set({
+      settings: { ...(settings as object), displayMode: 'translation-only' },
+    });
+  });
+  await expect(page.locator('html')).toHaveAttribute('data-tn-mode', 'translation-only');
+  // em-based sizes of the hidden block are kept, the icon stays, the text is swapped.
+  const pill = await page.locator('#pill').evaluate((el) => {
+    const cs = getComputedStyle(el);
+    return { minWidth: cs.minWidth, radius: cs.borderTopLeftRadius };
+  });
+  expect(pill).toEqual({ minWidth: '224px', radius: '28px' });
+  await expect(page.locator('#icon')).toBeVisible();
+  expect(await page.locator('#icon').evaluate((el) => el.getBoundingClientRect().width)).toBe(14);
+  // Line height comes from the original (1.4em of 16px), not from the hidden block's 0px.
+  expect(await style('cap', 'line-height')).toBe('22.4px');
+  // The squeezed translation stays hidden and the original stays readable.
+  expect(await page.locator('#tabs').evaluate((el) => getComputedStyle(el).fontSize)).toBe('16px');
+  await shot(page, '03-layout-translation-only');
+});
+
 test('switching display mode does not re-request', async ({ context, sw, server }) => {
   await configure(sw, baseSettings(server));
   const page = await openFixture(context, server);

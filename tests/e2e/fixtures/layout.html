@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Layout Fixture</title>
+    <style>
+      body {
+        font: 16px/1.5 sans-serif;
+        margin: 20px;
+        width: 700px;
+      }
+      .btn {
+        display: inline-block;
+        font-size: 14px;
+        min-width: 16em;
+        line-height: 1.5em;
+        padding: 0.5em 1em;
+        border-radius: 2em;
+        background: #222;
+        color: #fff;
+      }
+      .tabs {
+        width: 30px;
+      }
+    </style>
+  </head>
+  <body>
+    <h2 id="center" style="text-align: center">A centered heading over the whole page</h2>
+    <div id="ticker">
+      <span id="score" style="font-size: 11px; font-weight: 700; color: rgb(200, 0, 0)"
+        >Final score after the match today</span
+      >
+    </div>
+    <div>
+      <a id="pill" class="btn" href="#"
+        ><svg id="icon" width="1em" height="1em"><circle cx="50%" cy="50%" r="40%" /></svg> Download
+        the app</a
+      >
+    </div>
+    <p id="cap" style="line-height: 1.4em">
+      A long caption that wraps onto more than one line in this narrow column, so its line height
+      matters for readability when the original is hidden and the translation takes its place here.
+    </p>
+    <p id="same">VK © 2006–2026</p>
+    <div class="tabs" id="tabs">Settings menu</div>
+  </body>
+</html>

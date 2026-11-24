@@ -63,6 +63,8 @@ export class PageTranslator {
   private flushTimer: ReturnType<typeof setTimeout> | undefined;
   private rescanTimer: ReturnType<typeof setTimeout> | undefined;
   private rescanDeadline = 0;
+  private fitQueue = new Set<Unit>();
+  private fitTimer: ReturnType<typeof setTimeout> | undefined;
   private _active = false;
 
   constructor(
@@ -119,6 +121,9 @@ export class PageTranslator {
     this.mo = undefined;
     clearTimeout(this.flushTimer);
     clearTimeout(this.rescanTimer);
+    clearTimeout(this.fitTimer);
+    this.fitTimer = undefined;
+    this.fitQueue.clear();
     this.queue.clear();
     for (const unit of this.units.values()) this.resetUnit(unit);
     this.units.clear();
@@ -141,8 +146,15 @@ export class PageTranslator {
     if (!this._active) return;
     const cfg = this.deps.getConfig();
     const html = this.doc.documentElement;
+    const modeChanged = html.getAttribute('data-tn-mode') !== cfg.displayMode;
     html.setAttribute('data-tn-mode', cfg.displayMode);
     html.setAttribute('data-tn-theme', cfg.theme);
+    // Hiding the original frees room (or the reverse): fit the translations again.
+    if (modeChanged) {
+      for (const u of this.units.values()) {
+        if (u.el && u.status === 'done') this.scheduleFitCheck(u);
+      }
+    }
   }
 
   /** Forget in-memory results (e.g. after the target language changed) and re-translate. */
@@ -219,11 +231,13 @@ export class PageTranslator {
     while (el && el !== body && !isBlockLevel(el)) el = el.parentElement;
     if (!el || el === body) return undefined;
     const block = el;
-    const segments = collectSegments(block).filter((s) => s.block === block);
+    // Segments of nested blocks never contain `target` (it isn't inside them), except an
+    // inline box translated as a block of its own (a button), which is what we want then.
+    const segments = collectSegments(block);
     return (
       segments.find((s) => s.nodes.some((n) => n === target || n.contains(target))) ??
       // Pointer on the block's padding/margin rather than on its text.
-      (target === block ? segments[0] : undefined)
+      (target === block ? segments.find((s) => s.block === block) : undefined)
     );
   }
 
@@ -255,6 +269,7 @@ export class PageTranslator {
         existing.nodes = seg.nodes;
         existing.textNodes = seg.textNodes;
         existing.fullBlock = seg.fullBlock;
+        existing.decor = seg.decor;
         existing.placement = seg.placement;
         if (!sameInlineElements(existing, seg)) {
           existing.marks = seg.marks;
@@ -306,15 +321,7 @@ export class PageTranslator {
     unit.el = undefined;
     unit.status = 'idle';
     unit.error = undefined;
-    if (unit.block.hasAttribute(HIDE_ATTR)) {
-      unit.block.removeAttribute(HIDE_ATTR);
-      const style = (unit.block as HTMLElement).style;
-      style?.removeProperty('--tn-m');
-      style?.removeProperty('--tn-p');
-      style?.removeProperty('--tn-minw');
-      style?.removeProperty('--tn-maxw');
-      style?.removeProperty('--tn-marker-fs');
-    }
+    unhide(unit.block);
   }
 
   private onIntersect(entries: IntersectionObserverEntry[]): void {
@@ -434,7 +441,9 @@ export class PageTranslator {
 
   private ensureEl(unit: Unit): HTMLElement | undefined {
     // Inside the block right after the run, or right after the block itself (row layouts).
-    const anchor = unit.placement === 'after' ? unit.block : unit.nodes[unit.nodes.length - 1];
+    // Right after the text, before trailing icons ("Get started →" keeps its arrow last).
+    const lastText = unit.nodes.findLast((n) => !unit.decor.includes(n as Element));
+    const anchor = unit.placement === 'after' ? unit.block : lastText;
     const parent = unit.placement === 'after' ? unit.block.parentNode : unit.block;
     if (!anchor || !parent || anchor.parentNode !== parent) return undefined;
     if (!unit.el) unit.el = this.doc.createElement(TRANSLATION_TAG);
@@ -457,9 +466,20 @@ export class PageTranslator {
 
   private renderDone(unit: Unit, text: string): void {
     unit.status = 'done';
+    // Names, numbers and text already in the target language come back unchanged: showing
+    // them twice only adds clutter.
+    if (sameText(text, unit.text)) {
+      unit.el?.remove();
+      unit.el = undefined;
+      unhide(unit.block);
+      return;
+    }
     const el = this.ensureEl(unit);
     if (!el) return;
-    el.className = isShortSnippet(unit.text) ? 'tn-done tn-inline' : 'tn-done';
+    const inline = isShortSnippet(unit.text);
+    el.className = inline ? 'tn-done tn-inline' : 'tn-done';
+    el.removeAttribute('style');
+    this.scheduleFitCheck(unit);
     el.setAttribute('lang', this.deps.getConfig().targetLang);
     const span = this.doc.createElement('span');
     span.className = 'tn-text';
@@ -471,32 +491,58 @@ export class PageTranslator {
       atoms: unit.atoms,
     });
     el.replaceChildren(span);
-    if (unit.fullBlock) {
-      const view = this.doc.defaultView;
-      // Measure the block as the page styles it, not as hidden by translation-only mode
-      // (font-size 0), e.g. when an already translated paragraph is rendered again.
-      unit.block.removeAttribute(HIDE_ATTR);
-      const cs = view?.getComputedStyle(unit.block);
-      if (cs) {
-        el.style.setProperty('--tn-fs', cs.fontSize);
-        // em-based line heights would compute to 0 under font-size 0 and stack the lines.
-        el.style.setProperty('--tn-lh', cs.lineHeight);
-        const block = unit.block as HTMLElement;
-        block.style.setProperty(
-          '--tn-m',
-          `${cs.marginTop} ${cs.marginRight} ${cs.marginBottom} ${cs.marginLeft}`,
-        );
-        block.style.setProperty(
-          '--tn-p',
-          `${cs.paddingTop} ${cs.paddingRight} ${cs.paddingBottom} ${cs.paddingLeft}`,
-        );
-        block.style.setProperty('--tn-minw', cs.minWidth);
-        block.style.setProperty('--tn-maxw', cs.maxWidth);
-        el.style.setProperty('--tn-ls', cs.letterSpacing);
-        if (unit.block.localName === 'li') block.style.setProperty('--tn-marker-fs', cs.fontSize);
-      }
-      unit.block.setAttribute(HIDE_ATTR, '');
+    const view = this.doc.defaultView;
+    if (!view) return;
+    // Measure the original as shown, not as hidden by translation-only mode.
+    unhide(unit.block);
+    // Text wrapped in one styled element (<h2><span class="title">…</span></h2>): the
+    // translation sits beside that element, so give it the element's text style.
+    // Text that isn't laid out yet (font-size 0 until a script sizes it) has no style to copy.
+    const sized = (c: CSSStyleDeclaration) => parseFloat(c.fontSize) >= 2;
+    const cs = view.getComputedStyle(unit.block);
+    const source = textStyleSource(unit);
+    let tcs = source === unit.block ? cs : view.getComputedStyle(source);
+    if (tcs !== cs && sized(tcs)) {
+      for (const prop of TEXT_STYLE_PROPS) el.style.setProperty(prop, tcs.getPropertyValue(prop));
+    } else {
+      tcs = cs;
     }
+    if (!unit.fullBlock) return;
+    if (sized(tcs)) {
+      el.style.setProperty('--tn-fs', tcs.fontSize);
+      el.style.setProperty('--tn-lh', tcs.lineHeight);
+      el.style.setProperty('--tn-ls', tcs.letterSpacing);
+    }
+    const block = unit.block as HTMLElement;
+    const set = (name: string, value: string) => block.style.setProperty(name, value);
+    set('--tn-m', `${cs.marginTop} ${cs.marginRight} ${cs.marginBottom} ${cs.marginLeft}`);
+    set('--tn-p', `${cs.paddingTop} ${cs.paddingRight} ${cs.paddingBottom} ${cs.paddingLeft}`);
+    // Resolved values: em is converted to px, percentages and keywords stay as they are.
+    set('--tn-minw', cs.minWidth);
+    set('--tn-maxw', cs.maxWidth);
+    set('--tn-minh', cs.minHeight);
+    set('--tn-maxh', cs.maxHeight);
+    set('--tn-gap', `${cs.rowGap} ${cs.columnGap}`);
+    set('--tn-br', borderRadius(cs));
+    if (unit.block.localName === 'li') set('--tn-marker-fs', cs.fontSize);
+    set('--tn-bfs', cs.fontSize);
+    for (const d of unit.decor) if (d.parentNode === unit.block) d.setAttribute('data-tn-keep', '');
+    unit.block.setAttribute(HIDE_ATTR, '');
+  }
+
+  /** Check translations once laid out; hide the ones squeezed into a narrow box. */
+  private scheduleFitCheck(unit: Unit): void {
+    this.fitQueue.add(unit);
+    if (this.fitTimer) return;
+    this.fitTimer = setTimeout(() => {
+      this.fitTimer = undefined;
+      const units = [...this.fitQueue];
+      this.fitQueue.clear();
+      for (const u of units) if (u.el) u.el.classList.remove('tn-squeezed');
+      // Read all layouts first, then write, to avoid a reflow per unit.
+      const squeezed = units.filter((u) => u.status === 'done' && u.el && isSqueezed(u.el));
+      for (const u of squeezed) u.el!.classList.add('tn-squeezed');
+    }, 60);
   }
 
   private renderError(unit: Unit, error: SerializedError): void {
@@ -514,6 +560,82 @@ export class PageTranslator {
       this.enqueue(unit);
     };
   }
+}
+
+const HIDE_VARS = [
+  '--tn-m',
+  '--tn-p',
+  '--tn-minw',
+  '--tn-maxw',
+  '--tn-minh',
+  '--tn-maxh',
+  '--tn-gap',
+  '--tn-br',
+  '--tn-marker-fs',
+  '--tn-bfs',
+];
+
+/** Undo what translation-only mode set on a block. */
+function unhide(block: Element): void {
+  if (!block.hasAttribute(HIDE_ATTR)) return;
+  block.removeAttribute(HIDE_ATTR);
+  const style = (block as HTMLElement).style;
+  for (const name of HIDE_VARS) style?.removeProperty(name);
+  for (const d of Array.from(block.children)) d.removeAttribute('data-tn-keep');
+}
+
+/**
+ * A translation broken over several lines none of which holds two characters: the box it is
+ * in is too narrow for it (a tab, a pill, an avatar) and it would read as a column of glyphs.
+ */
+function isSqueezed(el: HTMLElement): boolean {
+  // Line fragments of the text itself: a block box has one client rect however many lines.
+  const range = el.ownerDocument.createRange();
+  range.selectNodeContents(el);
+  const rects = Array.from(range.getClientRects()).filter((r) => r.width > 0);
+  const lines = new Set(rects.map((r) => Math.round(r.top))).size;
+  if (lines < 2) return false;
+  const fs = parseFloat(el.ownerDocument.defaultView?.getComputedStyle(el).fontSize ?? '') || 16;
+  return Math.max(...rects.map((r) => r.width)) < fs * 1.6;
+}
+
+/** Inherited text properties a translation copies from the element its original text is in. */
+const TEXT_STYLE_PROPS = [
+  'font-family',
+  'font-size',
+  'font-style',
+  'font-weight',
+  'color',
+  'letter-spacing',
+  'line-height',
+];
+
+/** The innermost element holding all of the unit's text, if it is inside the block. */
+function textStyleSource(unit: Segment): Element {
+  let common: Element | null = unit.textNodes[0]?.parentElement ?? null;
+  for (const t of unit.textNodes) {
+    while (common && !common.contains(t)) common = common.parentElement;
+  }
+  return common && common !== unit.block && unit.block.contains(common) ? common : unit.block;
+}
+
+/** The border-radius shorthand of the four computed corners ("10px" or "10px 5px" each). */
+function borderRadius(cs: CSSStyleDeclaration): string {
+  const corners = [
+    cs.borderTopLeftRadius,
+    cs.borderTopRightRadius,
+    cs.borderBottomRightRadius,
+    cs.borderBottomLeftRadius,
+  ].map((c) => c.split(/\s+/));
+  return `${corners.map((c) => c[0]).join(' ')} / ${corners.map((c) => c[1] ?? c[0]).join(' ')}`;
+}
+
+const INLINE_TAGS_RE = /<\/?a(?: id="\d+")?>|<m id="\d+"\/>/g;
+
+/** A translation that only repeats the original. */
+function sameText(translated: string, original: string): boolean {
+  const norm = (s: string) => s.replace(/\s+/g, ' ').trim();
+  return norm(translated.replace(INLINE_TAGS_RE, '')) === norm(original);
 }
 
 /** Same links, styled text and formulas, so an existing translation still points at the right elements. */

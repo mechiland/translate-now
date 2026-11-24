@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { AddressInfo } from 'node:net';
 
-export type MockMode = 'ok' | '429-twice' | '401' | 'slow';
+export type MockMode = 'ok' | '429-twice' | '401' | 'slow' | 'cjk';
 
 export interface MockServer {
   url: string;
@@ -88,6 +88,40 @@ export function fakeTranslate(text: string): string {
   return `[ZH] ${text}`;
 }
 
+const CJK_POOL =
+  '的一是在不了有和人这中大为上个国我以要他时来用们生到作地于出就分对成会可主发年动同工也能下过子说产种面而方后多定行学法所民得经十三之进着等部度家电力里如水化高自二理起小物现实加量都两体制机当使点从业本去把性好应开它合还因由其些然前外天政四日那社义事平形相全表间样与关各重新线内数正心反你明看原又么利比或但质气第向道命此变条只没结解问意建月公无系军很情者最立代想已通并提直题程展五果料象员革位入常文总次品式活设及管特件长求老头基资边流路级少图山统接知较将组见计别手角期根论运农指几九区强放决西被干做必战先回则任取据处府';
+
+/**
+ * Deterministic pseudo-Chinese: every Latin or Cyrillic word becomes one to three Chinese characters
+ * and the spaces between them go away, so the result has the length and glyphs of a real
+ * Chinese translation. Inline <a id>/<m id/> tags, numbers and punctuation are kept.
+ */
+export function fakeChinese(text: string): string {
+  return text
+    .split(/(<\/?a(?: id="\d+")?>|<m id="\d+"\/>)/)
+    .map((part, i) => {
+      if (i % 2) return part;
+      const out = part.replace(
+        /[\p{Script=Latin}\p{Script=Cyrillic}][\p{L}\p{M}'’-]*/gu,
+        (word) => {
+          // Acronyms and codes (USD, NBA, TV) stay as they are, like a real translation.
+          if (/^[A-Z]{1,4}$/.test(word)) return word;
+          let h = 0;
+          for (const c of word.toLowerCase()) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+          const n = Math.min(3, Math.max(1, Math.round(word.length / 3)));
+          let s = '';
+          for (let k = 0; k < n; k++) s += CJK_POOL[(h + k * 7919) % CJK_POOL.length];
+          return s;
+        },
+      );
+      return out
+        .replace(/(?<=[\u4e00-\u9fff]) +(?=[\u4e00-\u9fff])/g, '')
+        .replace(/(?<=[\u4e00-\u9fff])\. ?/g, '。')
+        .replace(/(?<=[\u4e00-\u9fff]), ?/g, '，');
+    })
+    .join('');
+}
+
 export async function startMockServer(fixturesDir: string): Promise<MockServer> {
   let mode: MockMode = 'ok';
   let rateLimitedLeft = 0;
@@ -126,10 +160,11 @@ export async function startMockServer(fixturesDir: string): Promise<MockServer> 
           rateLimitedLeft--;
           return send(429, { error: { message: 'Rate limited' } }, { 'Retry-After': '0' });
         }
+        const fake = mode === 'cjk' ? fakeChinese : fakeTranslate;
         const segs = [...user.matchAll(/<seg id="(\d+)">([\s\S]*?)<\/seg>/g)];
         const content = segs.length
-          ? segs.map((m) => `<seg id="${m[1]}">${fakeTranslate(m[2]!)}</seg>`).join('\n')
-          : fakeTranslate(user);
+          ? segs.map((m) => `<seg id="${m[1]}">${fake(m[2]!)}</seg>`).join('\n')
+          : fake(user);
         const reply = () => send(200, { choices: [{ message: { role: 'assistant', content } }] });
         if (mode === 'slow') setTimeout(reply, 400);
         else reply();

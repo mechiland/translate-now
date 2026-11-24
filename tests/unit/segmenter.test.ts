@@ -113,10 +113,45 @@ describe('collectSegments', () => {
     expect(s[0]!.text).toBe('Line one\nLine two\nLine three');
   });
 
-  it('marks blocks with images as not text-only (translation-only must not hide them)', () => {
+  it('keeps icons and images beside a label as decor of a text-only block', () => {
     const s = segs('<p><img src="x.png"> Caption text here</p>');
     expect(s[0]!.text).toBe('Caption text here');
+    expect(s[0]!.fullBlock).toBe(true);
+    expect(s[0]!.decor.map((d) => d.localName)).toEqual(['img']);
+    const btn = segs('<p>Download app <span class="icon"><svg></svg></span></p>');
+    expect(btn[0]!.fullBlock).toBe(true);
+    expect(btn[0]!.decor.map((d) => d.className)).toEqual(['icon']);
+  });
+
+  it('marks blocks with an image inside the sentence as not text-only', () => {
+    const s = segs('<p>Caption <span>with <img src="x.png"> inline</span> image</p>');
     expect(s[0]!.fullBlock).toBe(false);
+  });
+
+  it('treats inline list items and custom elements as text', () => {
+    const s = segs(
+      '<ul><li style="display:inline">Archive</li> <li style="display:inline">About us</li></ul>' +
+        '<p>Updated <relative-time>Nov 24</relative-time></p>',
+    );
+    expect(s.map((x) => x.fullBlock)).toEqual([true, true]);
+  });
+
+  it('translates inside an inline box that holds the whole run', () => {
+    const s = segs(
+      '<div><button style="display:inline-flex"><div>Sign up for free</div></button></div>' +
+        '<p><a href="/x" style="display:inline-block">Read more</a></p>',
+    );
+    expect(s.map((x) => [x.block.localName, x.text])).toEqual([
+      ['div', 'Sign up for free'],
+      ['a', 'Read more'],
+    ]);
+    const wrapped = segs(
+      '<div><a href="/"><button style="display:inline-flex"><svg></svg><div>For You</div></button></a></div>',
+    );
+    expect(wrapped[0]!.block.localName).toBe('div');
+    expect(wrapped[0]!.block.parentElement!.localName).toBe('button');
+    expect(s[0]!.block.parentElement!.localName).toBe('button');
+    expect(s.every((x) => x.fullBlock)).toBe(true);
   });
 
   it('ignores our own injected translation elements', () => {
