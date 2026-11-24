@@ -1,4 +1,4 @@
-import { atomText } from './segmenter';
+import { atomText, isLinkElement } from './segmenter';
 
 export type InlineLinkPart =
   { type: 'text'; text: string } | { type: 'link'; index: number; text: string };
@@ -119,7 +119,8 @@ export function createMirrorLink(
 export interface RenderLinksOptions {
   plainText: string;
   block: Element;
-  links: HTMLAnchorElement[];
+  /** Elements for the `<a id="N">` markers: links, and styled text to copy the look of. */
+  marks: Element[];
   wrapLink?: HTMLAnchorElement;
   /** Inline formulas referenced by `<m id="N"/>` placeholders in the translation. */
   atoms?: Element[];
@@ -160,7 +161,20 @@ function atomsAsText(text: string, atoms: Element[]): string {
   });
 }
 
-/** Populate `container` with translated text, restoring whole-segment or inline links. */
+const STYLED_ATTRS = ['class', 'style', 'title', 'lang', 'dir'] as const;
+
+/** An element with `source`'s tag, classes and inline style holding the translated `text`. */
+export function createStyledCopy(doc: Document, source: Element, text: string): HTMLElement {
+  const el = doc.createElement(source.localName);
+  for (const attr of STYLED_ATTRS) {
+    const val = source.getAttribute(attr);
+    if (val !== null) el.setAttribute(attr, val);
+  }
+  el.textContent = text;
+  return el;
+}
+
+/** Populate `container` with translated text, restoring links and styled text. */
 export function renderTranslatedContent(
   doc: Document,
   container: HTMLElement,
@@ -173,20 +187,24 @@ export function renderTranslatedContent(
     return;
   }
   const atoms = opts.atoms ?? [];
-  if (opts.links.length === 0) {
+  if (opts.marks.length === 0) {
     container.replaceChildren(...textWithAtoms(doc, translatedText, atoms));
     return;
   }
   const preserveLiteralClose = /<\/a>/i.test(opts.plainText);
-  const parts = parseInlineLinks(translatedText, opts.links.length, preserveLiteralClose);
+  const parts = parseInlineLinks(translatedText, opts.marks.length, preserveLiteralClose);
   const nodes: Node[] = [];
   for (const part of parts) {
     if (part.type === 'text') {
       nodes.push(...textWithAtoms(doc, part.text, atoms));
     } else {
-      const source = opts.links[part.index]!;
+      const source = opts.marks[part.index]!;
       const text = atomsAsText(part.text, atoms);
-      nodes.push(createMirrorLink(doc, source, text, source !== opts.block));
+      nodes.push(
+        isLinkElement(source)
+          ? createMirrorLink(doc, source, text, source !== opts.block)
+          : createStyledCopy(doc, source, text),
+      );
     }
   }
   container.replaceChildren(...nodes);

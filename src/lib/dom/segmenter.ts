@@ -7,6 +7,8 @@
  * inherits the block's font, color and layout.
  */
 
+import { keepsStyle } from './keepStyle';
+
 export const TRANSLATION_TAG = 'tn-translation';
 export const UI_TAG = 'tn-ui';
 
@@ -136,11 +138,14 @@ export interface Segment {
   text: string;
   /**
    * Text sent for translation. Same as `text` unless inline `<a id="N">...</a>` markers are
-   * embedded to preserve links inside the segment.
+   * embedded to preserve links and styled text inside the segment.
    */
   payload: string;
-  /** Inline `<a href>` elements referenced by `<a id="1">...</a>`..`<a id="K">...</a>` in `payload`. */
-  links: HTMLAnchorElement[];
+  /**
+   * Inline elements referenced by `<a id="1">...</a>`..`<a id="K">...</a>` in `payload`: links
+   * (`<a href>`) and styled text (see `KEEP_STYLE_SELECTORS`).
+   */
+  marks: Element[];
   /**
    * Inline formulas (`<math>`) referenced by `<m id="1"/>`..`<m id="K"/>` in `payload`. They are
    * not translated; the translation gets a copy of each one at the placeholder's position.
@@ -294,7 +299,8 @@ function isFlowContainer(style: ElementStyle): boolean {
 
 interface RunPiece {
   text: string;
-  link?: HTMLAnchorElement;
+  /** The link or styled element this text is inside, kept with an `<a id="N">` marker. */
+  mark?: Element;
   /** An inline formula kept as a placeholder; `text` is its readable text. */
   atom?: Element;
 }
@@ -328,45 +334,50 @@ interface Run {
   textOnly: boolean;
 }
 
-function isLinkElement(el: Element): el is HTMLAnchorElement {
+export function isLinkElement(el: Element): el is HTMLAnchorElement {
   return el.localName === 'a' && el.hasAttribute('href');
 }
 
-function buildLinkPayload(
-  pieces: RunPiece[],
+function buildMarkPayload(
+  allPieces: RunPiece[],
   plainText: string,
   alreadyInLink: boolean,
-): { payload: string; links: HTMLAnchorElement[]; wrapLink?: HTMLAnchorElement } {
-  if (alreadyInLink) return { payload: plainText, links: [] };
+): { payload: string; marks: Element[]; wrapLink?: HTMLAnchorElement } {
+  // A translation inserted inside a link can't hold links of its own; styled text is fine.
+  const pieces = alreadyInLink
+    ? allPieces.map((p) => (p.mark && isLinkElement(p.mark) ? { ...p, mark: undefined } : p))
+    : allPieces;
 
-  let hasAnyLink = false;
-  let soleLink: HTMLAnchorElement | undefined;
-  let allSameLink = true;
+  let hasAnyMark = false;
+  let soleMark: Element | undefined;
+  let allSameMark = true;
   for (const p of pieces) {
     if (!/[^\s\uE000]/.test(p.text)) continue;
-    if (p.link) {
-      hasAnyLink = true;
-      if (soleLink === undefined) soleLink = p.link;
-      else if (soleLink !== p.link) allSameLink = false;
+    if (p.mark) {
+      hasAnyMark = true;
+      if (soleMark === undefined) soleMark = p.mark;
+      else if (soleMark !== p.mark) allSameMark = false;
     } else {
-      allSameLink = false;
+      allSameMark = false;
     }
   }
-  if (!hasAnyLink) return { payload: plainText, links: [] };
-  if (allSameLink && soleLink) return { payload: plainText, links: [], wrapLink: soleLink };
-
-  // Merge consecutive pieces sharing the same link element so nested inline tags stay one marker.
-  const groups: { link?: HTMLAnchorElement; raw: string }[] = [];
-  for (const p of pieces) {
-    const prev = groups[groups.length - 1];
-    if (prev && prev.link === p.link) prev.raw += p.text;
-    else groups.push({ link: p.link, raw: p.text });
+  if (!hasAnyMark) return { payload: plainText, marks: [] };
+  if (allSameMark && soleMark && isLinkElement(soleMark)) {
+    return { payload: plainText, marks: [], wrapLink: soleMark };
   }
 
-  const links: HTMLAnchorElement[] = [];
+  // Merge consecutive pieces sharing the same element so nested inline tags stay one marker.
+  const groups: { mark?: Element; raw: string }[] = [];
+  for (const p of pieces) {
+    const prev = groups[groups.length - 1];
+    if (prev && prev.mark === p.mark) prev.raw += p.text;
+    else groups.push({ mark: p.mark, raw: p.text });
+  }
+
+  const marks: Element[] = [];
   const out: string[] = [];
   for (const g of groups) {
-    if (!g.link) {
+    if (!g.mark) {
       out.push(g.raw);
       continue;
     }
@@ -382,8 +393,8 @@ function buildLinkPayload(
       out.push(g.raw);
       continue;
     }
-    links.push(g.link);
-    const id = links.length;
+    marks.push(g.mark);
+    const id = marks.length;
     if (leadBr) out.push(BR_MARK);
     else if (leadSpace) out.push(' ');
     out.push(`<a id="${id}">${inner}</a>`);
@@ -391,34 +402,34 @@ function buildLinkPayload(
     else if (trailSpace) out.push(' ');
   }
   return {
-    payload: links.length > 0 ? normalizeText(out.join('')) : plainText,
-    links,
+    payload: marks.length > 0 ? normalizeText(out.join('')) : plainText,
+    marks,
   };
 }
 
-/** The translation payload of a run: link markers plus `<m id="N"/>` formula placeholders. */
+/** The translation payload of a run: link/style markers plus `<m id="N"/>` formula placeholders. */
 function buildPayload(
   pieces: RunPiece[],
   plainText: string,
   alreadyInLink: boolean,
-): { payload: string; links: HTMLAnchorElement[]; wrapLink?: HTMLAnchorElement; atoms: Element[] } {
+): { payload: string; marks: Element[]; wrapLink?: HTMLAnchorElement; atoms: Element[] } {
   const atoms: Element[] = [];
   for (const p of pieces) {
     if (p.atom && atoms.length < MAX_ATOMS) atoms.push(p.atom);
   }
-  if (atoms.length === 0) return { ...buildLinkPayload(pieces, plainText, alreadyInLink), atoms };
+  if (atoms.length === 0) return { ...buildMarkPayload(pieces, plainText, alreadyInLink), atoms };
   let i = 0;
   const marked = pieces.map((p): RunPiece => {
     if (!p.atom || i >= MAX_ATOMS) return p;
-    return { text: String.fromCharCode(ATOM_BASE + i++), link: p.link };
+    return { text: String.fromCharCode(ATOM_BASE + i++), mark: p.mark };
   });
   const markedText = normalizeText(marked.map((p) => p.text).join(''));
-  const res = buildLinkPayload(marked, markedText, alreadyInLink);
+  const res = buildMarkPayload(marked, markedText, alreadyInLink);
   const payload = res.payload.replace(
     ATOM_CHAR_RE,
     (c) => `<m id="${c.charCodeAt(0) - ATOM_BASE + 1}"/>`,
   );
-  return { payload, links: res.links, atoms };
+  return { payload, marks: res.marks, atoms };
 }
 
 export function collectSegments(root: Element, opts: SegmenterOptions = {}): Segment[] {
@@ -462,14 +473,14 @@ export function collectSegments(root: Element, opts: SegmenterOptions = {}): Seg
         const placement = placementFor(block, text);
         const insertionParent = placement === 'after' ? block.parentElement : block;
         const alreadyInLink = Boolean(insertionParent?.closest('a[href]'));
-        const { payload, links, wrapLink, atoms } = buildPayload(r.pieces, text, alreadyInLink);
+        const { payload, marks, wrapLink, atoms } = buildPayload(r.pieces, text, alreadyInLink);
         blockSegments.push({
           block,
           nodes: r.nodes,
           textNodes: r.textNodes,
           text,
           payload,
-          links,
+          marks,
           atoms,
           wrapLink,
           // Translation-only mode hides the original inside the block; not possible when the
@@ -491,16 +502,16 @@ export function collectSegments(root: Element, opts: SegmenterOptions = {}): Seg
       node: Node,
       top: Node,
       flat = false,
-      activeLink: HTMLAnchorElement | undefined = undefined,
+      activeMark: Element | undefined = undefined,
     ): void => {
       if (node.nodeType === 3) {
         const data = (node as Text).data;
         if (/\S/.test(data)) {
           const r = current(top);
-          r.pieces.push({ text: data, link: activeLink });
+          r.pieces.push({ text: data, mark: activeMark });
           r.textNodes.push(node as Text);
         } else if (run) {
-          run.pieces.push({ text: ' ', link: activeLink });
+          run.pieces.push({ text: ' ', mark: activeMark });
         }
         return;
       }
@@ -509,7 +520,7 @@ export function collectSegments(root: Element, opts: SegmenterOptions = {}): Seg
       const tag = el.localName;
       if (tag === TRANSLATION_TAG || tag === UI_TAG) return;
       if (tag === 'br') {
-        if (run) run.pieces.push({ text: BR_MARK, link: activeLink });
+        if (run) run.pieces.push({ text: BR_MARK, mark: activeMark });
         return;
       }
       const style = getStyle(el);
@@ -530,13 +541,13 @@ export function collectSegments(root: Element, opts: SegmenterOptions = {}): Seg
         }
         if (ATOM_TAGS.has(tag)) {
           // An inline formula is part of the sentence: keep its place with a placeholder (or,
-          // inside a link, whose text is plain, with its readable text).
+          // inside a link or styled text, whose text is plain, with its readable text).
           const t = atomText(el);
           if (t)
             current(top).pieces.push({
               text: t,
-              link: activeLink,
-              atom: activeLink ? undefined : el,
+              mark: activeMark,
+              atom: activeMark ? undefined : el,
             });
           return;
         }
@@ -547,14 +558,14 @@ export function collectSegments(root: Element, opts: SegmenterOptions = {}): Seg
         if (keepText) {
           const t = el.textContent ?? '';
           if (/\S/.test(t)) {
-            let link = isLinkElement(el) ? el : activeLink;
-            if (!link) {
+            let mark = isLinkElement(el) ? el : activeMark;
+            if (!mark) {
               const anchors = el.querySelectorAll('a[href]');
               if (anchors.length === 1 && anchors[0]!.textContent?.trim() === t.trim()) {
-                link = anchors[0] as HTMLAnchorElement;
+                mark = anchors[0] as HTMLAnchorElement;
               }
             }
-            current(top).pieces.push({ text: t, link });
+            current(top).pieces.push({ text: t, mark });
           }
         } else if (run) {
           // An inline icon/image/button inside the run: keep the run, but the block isn't text-only.
@@ -574,8 +585,9 @@ export function collectSegments(root: Element, opts: SegmenterOptions = {}): Seg
         // Unknown inline element (custom element, label, etc.)
         current(top).textOnly = false;
       }
-      const nextLink = isLinkElement(el) ? el : activeLink;
-      for (const child of Array.from(el.childNodes)) visit(child, top, flatten, nextLink);
+      // A link wins over styled text around it; inside a mark, styled text stays plain.
+      const nextMark = isLinkElement(el) || (!activeMark && keepsStyle(el)) ? el : activeMark;
+      for (const child of Array.from(el.childNodes)) visit(child, top, flatten, nextMark);
     };
 
     for (const child of Array.from(block.childNodes)) visit(child, child, false, blockLink);
