@@ -7,6 +7,7 @@ import {
   toProviderError,
 } from './errors';
 import { getPreset } from './presets';
+import { thinkingOffFields } from './thinking';
 
 export interface ChatRequest {
   system: string;
@@ -51,16 +52,26 @@ function baseHeaders(profile: ProviderProfile): Record<string, string> {
   return headers;
 }
 
-export function buildChatRequest(profile: ProviderProfile, req: ChatRequest): HttpRequest {
+/**
+ * @param withThinkingOff add the vendor-specific fields that switch model thinking off
+ *   (unless the profile allows thinking).
+ */
+export function buildChatRequest(
+  profile: ProviderProfile,
+  req: ChatRequest,
+  withThinkingOff = true,
+): HttpRequest {
   const base = trimSlash(profile.baseURL);
   const headers = { ...baseHeaders(profile), 'Content-Type': 'application/json' };
   const temperature = profile.temperature;
+  const extra = withThinkingOff ? thinkingOffFields(profile) : {};
   if (profile.protocol === 'anthropic') {
     const body: Record<string, unknown> = {
       model: profile.model.trim(),
       max_tokens: 8192,
       system: req.system,
       messages: [{ role: 'user', content: req.user }],
+      ...extra,
     };
     if (temperature !== undefined) body.temperature = temperature;
     return { url: `${base}/messages`, method: 'POST', headers, body: JSON.stringify(body) };
@@ -72,6 +83,7 @@ export function buildChatRequest(profile: ProviderProfile, req: ChatRequest): Ht
       { role: 'user', content: req.user },
     ],
     stream: false,
+    ...extra,
   };
   if (temperature !== undefined) body.temperature = temperature;
   return { url: `${base}/chat/completions`, method: 'POST', headers, body: JSON.stringify(body) };
@@ -168,8 +180,45 @@ export async function chat(
   fetchImpl: FetchLike = (u, i) => fetch(u, i),
 ): Promise<string> {
   validate(profile, true);
-  const http = buildChatRequest(profile, req);
-  const json = await send(http, combineSignals(req.signal, req.timeoutMs ?? 90_000), fetchImpl);
+  const signal = combineSignals(req.signal, req.timeoutMs ?? 90_000);
+  const key = `${trimSlash(profile.baseURL)}|${profile.model.trim()}`;
+  const tryThinkingOff =
+    !thinkingOffRejected.has(key) && Object.keys(thinkingOffFields(profile)).length > 0;
+  if (tryThinkingOff) {
+    try {
+      return await chatOnce(profile, buildChatRequest(profile, req, true), signal, fetchImpl);
+    } catch (e) {
+      if (!(e instanceof ProviderError) || e.kind !== 'bad_request') throw e;
+      // The endpoint may not know the thinking switch: retry without it and, if that works,
+      // stop sending it to this model.
+      const text = await chatOnce(
+        profile,
+        buildChatRequest(profile, req, false),
+        signal,
+        fetchImpl,
+      );
+      thinkingOffRejected.add(key);
+      return text;
+    }
+  }
+  return chatOnce(profile, buildChatRequest(profile, req, false), signal, fetchImpl);
+}
+
+/** "baseURL|model" pairs whose endpoint rejected the thinking-off fields. */
+const thinkingOffRejected = new Set<string>();
+
+/** For tests. */
+export function resetThinkingOffCache(): void {
+  thinkingOffRejected.clear();
+}
+
+async function chatOnce(
+  profile: ProviderProfile,
+  http: HttpRequest,
+  signal: AbortSignal,
+  fetchImpl: FetchLike,
+): Promise<string> {
+  const json = await send(http, signal, fetchImpl);
   const o = json as { error?: unknown } | null;
   if (o && typeof o === 'object' && o.error && !('choices' in o) && !('content' in o)) {
     throw new ProviderError('bad_request', extractErrorMessage(JSON.stringify(o)));
