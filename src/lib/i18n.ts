@@ -94,6 +94,9 @@ const zh = {
   providerModelsFetched: '已获取 {0} 个模型',
   providerTemperature: 'Temperature',
   providerTemperatureHint: '留空则使用模型默认值。部分推理模型不支持自定义 temperature。',
+  providerAllowThinking: '允许模型思考',
+  providerAllowThinkingHint:
+    '默认关闭推理模型的思考（深度思考）过程，翻译会快很多。开启后可能略提升质量，但明显更慢、更费 token。',
   providerTest: '测试连接',
   providerTesting: '测试中…',
   providerTestOk: '连接成功（{0} ms）：{1}',
@@ -305,6 +308,9 @@ const en: Record<MessageKey, string> = {
   providerTemperature: 'Temperature',
   providerTemperatureHint:
     'Leave empty to use the model default. Some reasoning models reject custom temperatures.',
+  providerAllowThinking: 'Let the model think',
+  providerAllowThinkingHint:
+    'Off by default: reasoning models answer directly, which makes translation much faster. Turning it on may help quality a little, but is much slower and uses more tokens.',
   providerTest: 'Test connection',
   providerTesting: 'Testing…',
   providerTestOk: 'Connected ({0} ms): {1}',

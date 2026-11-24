@@ -14,6 +14,8 @@ export interface ProviderProfile {
   model: string;
   /** Undefined = let the model use its default temperature. */
   temperature?: number;
+  /** Let reasoning models think before answering. Off by default: much slower. */
+  allowThinking?: boolean;
 }
 
 export type DisplayMode = 'bilingual' | 'translation-only';

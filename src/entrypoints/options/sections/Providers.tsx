@@ -9,8 +9,9 @@ import ViewOffIcon from '@hugeicons/core-free-icons/ViewOffIcon';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Field, FieldDescription, FieldLabel } from '@/components/ui/field';
+import { Field, FieldContent, FieldDescription, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
+import { Switch } from '@/components/ui/switch';
 import {
   InputGroup,
   InputGroupAddon,
@@ -283,6 +284,17 @@ export function ProvidersSection({ settings, update, t }: SectionProps) {
             />
           </div>
           <FieldDescription>{t('providerTemperatureHint')}</FieldDescription>
+        </Field>
+        <Field orientation="horizontal">
+          <FieldContent>
+            <FieldLabel htmlFor="allow-thinking">{t('providerAllowThinking')}</FieldLabel>
+            <FieldDescription>{t('providerAllowThinkingHint')}</FieldDescription>
+          </FieldContent>
+          <Switch
+            id="allow-thinking"
+            checked={draft.allowThinking ?? false}
+            onCheckedChange={(on) => patch({ allowThinking: on || undefined })}
+          />
         </Field>
 
         <div className="flex flex-wrap gap-2">

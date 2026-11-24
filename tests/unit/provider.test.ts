@@ -1,5 +1,11 @@
-import { describe, expect, it, vi } from 'vitest';
-import { buildChatRequest, chat, listModels, parseChatResponse } from '@/lib/providers/client';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  buildChatRequest,
+  chat,
+  listModels,
+  parseChatResponse,
+  resetThinkingOffCache,
+} from '@/lib/providers/client';
 import {
   ProviderError,
   errorKindForStatus,
@@ -46,7 +52,18 @@ describe('buildChatRequest', () => {
         { role: 'user', content: 'U' },
       ],
       stream: false,
+      reasoning: { effort: 'none' },
     });
+  });
+
+  it('leaves thinking alone when the profile allows it', () => {
+    const r = buildChatRequest({ ...openai, allowThinking: true }, { system: 'S', user: 'U' });
+    expect(JSON.parse(r.body!).reasoning).toBeUndefined();
+  });
+
+  it('can build a request without the thinking switch', () => {
+    const r = buildChatRequest(openai, { system: 'S', user: 'U' }, false);
+    expect(JSON.parse(r.body!).reasoning).toBeUndefined();
   });
 
   it('builds an Anthropic request', () => {
@@ -98,6 +115,28 @@ describe('parseChatResponse', () => {
 });
 
 describe('chat', () => {
+  beforeEach(() => resetThinkingOffCache());
+
+  it('retries without the thinking switch on 400 and remembers it', async () => {
+    const bodies: Record<string, unknown>[] = [];
+    const f = vi.fn(async (_url: string, init: RequestInit) => {
+      const body = JSON.parse(init.body as string) as Record<string, unknown>;
+      bodies.push(body);
+      return 'reasoning' in body
+        ? jsonResponse({ error: { message: 'Unrecognized request argument: reasoning' } }, 400)
+        : jsonResponse({ choices: [{ message: { content: 'ok' } }] });
+    });
+    await expect(chat(openai, { system: 's', user: 'u' }, f)).resolves.toBe('ok');
+    await expect(chat(openai, { system: 's', user: 'u' }, f)).resolves.toBe('ok');
+    expect(bodies.map((b) => 'reasoning' in b)).toEqual([true, false, false]);
+  });
+
+  it('does not retry other errors without the thinking switch', async () => {
+    const f = vi.fn(async () => jsonResponse({ error: { message: 'bad key' } }, 401));
+    await expect(chat(openai, { system: 's', user: 'u' }, f)).rejects.toThrow('bad key');
+    expect(f).toHaveBeenCalledOnce();
+  });
+
   it('returns content on success', async () => {
     const f = vi.fn(async () => jsonResponse({ choices: [{ message: { content: '你好' } }] }));
     await expect(chat(openai, { system: 's', user: 'u' }, f)).resolves.toBe('你好');
