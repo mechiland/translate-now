@@ -4,8 +4,26 @@ import type { SerializedError } from '../providers/errors';
 import type { DisplayMode } from '../settings/schema';
 import { createBatches } from '../translate/batching';
 import type { SegmentResult } from '../translate/translator';
-import { extractBlocks, type FontMetrics, type PdfBlock } from './layout';
+import { ATOM_TAG_RE, parseInlineLinks } from '../dom/links';
+import { classifyFont, type FontInfo, type PdfJsFont } from './fonts';
+import {
+  extractBlocks,
+  type FontMetrics,
+  type PdfBlock,
+  type PdfGlyphs,
+  type PdfRect,
+  type Separated,
+} from './layout';
 import { pdfjs, type PDFDocumentProxy, type PDFPageProxy } from './pdfjs';
+import {
+  buildMarkup,
+  cssColor,
+  hasProse,
+  isTexBody,
+  type BlockMarkup,
+  type MathSpan,
+  type Rgb,
+} from './runs';
 
 /**
  * Side-by-side PDF translation view.
@@ -25,8 +43,11 @@ interface Unit {
   status: Status;
   el?: HTMLElement;
   /** Background color under the paragraph, sampled from the rendered page. */
-  bg: string;
-  bold: boolean;
+  bg: Rgb;
+  /** Body style, styled runs and inline formulas (known once the page has rendered). */
+  markup?: BlockMarkup;
+  /** Rules (table lines) crossing the patch, in points. */
+  rules?: PdfRect[];
   text?: string;
   error?: SerializedError;
   gen: number;
@@ -50,6 +71,8 @@ interface Page {
   renderScale: number;
   rendering?: Promise<void>;
   imgUrl?: string;
+  /** The page rendered without text. */
+  bareUrl?: string;
   textLayerDone: boolean;
   near: boolean;
 }
@@ -87,8 +110,33 @@ const MIN_ZOOM = 0.3;
 const MAX_ZOOM = 4;
 /** CSS px per PDF point when printing: 1pt = 1/72in, 1px = 1/96in. */
 const PRINT_ZOOM = 96 / 72;
-/** Bold font names: "Times-Bold", "NimbusRomNo9L-Medi", "CMBX10", "Arial-BlackMT"... */
-const BOLD_FONT = /bold|black|heavy|demi|medi|cmbx/i;
+const WHITE: Rgb = [255, 255, 255];
+/** pdf.js operators that draw text. */
+const TEXT_OPS = new Set<number>([
+  pdfjs.OPS.showText,
+  pdfjs.OPS.showSpacedText,
+  pdfjs.OPS.nextLineShowText,
+  pdfjs.OPS.nextLineSetSpacingShowText,
+]);
+
+const OPENING_PUNCT = /[（(［[｛{「『“‘《〈【〔]+$/u;
+const CLOSING_PUNCT = /^[，。、；：！？）)］\]｝}」』”’》〉】〕,.;:!?%…]+/u;
+
+/**
+ * The area a translation covers, in points: the paragraph plus a little margin. A list
+ * item's marker stays visible on the page: the patch starts right after it (the translation
+ * hangs at the item's text column).
+ */
+function patchRect(block: PdfBlock): PdfRect {
+  const { x, y, w, h } = block.rect;
+  const marker = block.marker;
+  const left = marker ? Math.min(marker.end + 0.6, marker.textX - PAD) : x - PAD;
+  return { x: left, y: y - PAD, w: x + w + PAD - left, h: h + 2 * PAD };
+}
+
+function payloadOf(u: Unit): string {
+  return u.markup?.payload ?? u.block.text;
+}
 
 export class PdfViewer {
   private pages: Page[] = [];
@@ -210,7 +258,10 @@ export class PdfViewer {
     this.scroller.removeEventListener('scroll', this.onScroll);
     clearTimeout(this.flushTimer);
     clearTimeout(this.rerenderTimer);
-    for (const p of this.pages) if (p.imgUrl) URL.revokeObjectURL(p.imgUrl);
+    for (const p of this.pages) {
+      if (p.imgUrl) URL.revokeObjectURL(p.imgUrl);
+      if (p.bareUrl) URL.revokeObjectURL(p.bareUrl);
+    }
     void this.doc.loadingTask.destroy();
   }
 
@@ -392,25 +443,57 @@ export class PdfViewer {
 
   private extract(p: Page): Promise<void> {
     p.extracting ??= (async () => {
-      const proxy = p.proxy!;
-      const tc = await proxy.getTextContent();
-      p.textContent = tc;
-      const vp = proxy.getViewport({ scale: 1 });
-      const blocks = extractBlocks(
-        tc.items.filter((i) => 'str' in i),
-        tc.styles as Record<string, FontMetrics>,
-        vp.transform,
-      );
-      p.units = blocks.map((block) => ({
-        page: p,
-        block,
-        status: block.translatable ? 'idle' : 'skipped',
-        bg: '#fff',
-        bold: false,
-        gen: 0,
-      }));
+      p.textContent = await p.proxy!.getTextContent();
     })();
     return p.extracting;
+  }
+
+  /**
+   * Paragraphs of the page, once it has rendered: the text-free bitmap shows the rules that
+   * separate table cells sitting close together.
+   */
+  private buildUnits(p: Page, bare: HTMLCanvasElement, scale: number): void {
+    const tc = p.textContent;
+    if (!tc) return;
+    const { width, height } = bare;
+    const data = bare
+      .getContext('2d', { willReadFrequently: true })
+      ?.getImageData(0, 0, width, height).data;
+    /** A vertical line: a pixel column that is inked over most of the band. */
+    const separated: Separated = (x0, x1, top, bottom) => {
+      if (!data) return false;
+      const cx0 = Math.max(0, Math.ceil(x0 * scale));
+      const cx1 = Math.min(width, Math.floor(x1 * scale));
+      const cy0 = Math.max(0, Math.ceil(top * scale));
+      const cy1 = Math.min(height, Math.floor(bottom * scale));
+      if (cx1 <= cx0 || cy1 - cy0 < 3) return false;
+      const lum = (x: number, y: number) => {
+        const o = (y * width + x) * 4;
+        return 0.3 * data[o]! + 0.59 * data[o + 1]! + 0.11 * data[o + 2]!;
+      };
+      let light = 0;
+      for (let y = cy0; y < cy1; y++)
+        for (let x = cx0; x < cx1; x++) light = Math.max(light, lum(x, y));
+      for (let x = cx0; x < cx1; x++) {
+        let inked = 0;
+        for (let y = cy0; y < cy1; y++) if (light - lum(x, y) > 60) inked++;
+        if (inked >= 0.8 * (cy1 - cy0)) return true;
+      }
+      return false;
+    };
+    const blocks = extractBlocks(
+      tc.items.filter((i) => 'str' in i),
+      tc.styles as Record<string, FontMetrics>,
+      p.proxy!.getViewport({ scale: 1 }).transform,
+      separated,
+    );
+    p.units = blocks.map((block) => ({
+      page: p,
+      block,
+      status: block.translatable ? 'idle' : 'skipped',
+      bg: WHITE,
+      gen: 0,
+    }));
   }
 
   private async acquireRender(): Promise<void> {
@@ -439,21 +522,42 @@ export class PdfViewer {
         canvas.width = Math.floor(viewport.width);
         canvas.height = Math.floor(viewport.height);
         await proxy.render({ canvas, viewport }).promise;
-        if (p.renderScale === 0) this.sampleBlocks(p, canvas, scale);
-        const blob = await new Promise<Blob | null>((r) => canvas.toBlob(r, 'image/png'));
-        canvas.width = canvas.height = 0;
-        if (!blob || this.destroyed) return;
-        const old = p.imgUrl;
+        // The page without its text: what a translated paragraph is drawn on, so table rules,
+        // shading and anything else under the text stay visible.
+        const bare = this.scroller.ownerDocument.createElement('canvas');
+        bare.width = canvas.width;
+        bare.height = canvas.height;
+        await proxy.render({
+          canvas: bare,
+          viewport,
+          operationsFilter: (i, ops) => !TEXT_OPS.has(ops.fnArray[i]!),
+        }).promise;
+        if (p.renderScale === 0) {
+          this.buildUnits(p, bare, scale);
+          this.sampleBlocks(p, canvas, scale);
+          this.findRules(p, bare, scale);
+        }
+        const toBlob = (c: HTMLCanvasElement) =>
+          new Promise<Blob | null>((r) => c.toBlob(r, 'image/png'));
+        const [blob, bareBlob] = await Promise.all([toBlob(canvas), toBlob(bare)]);
+        canvas.width = canvas.height = bare.width = bare.height = 0;
+        if (!blob || !bareBlob || this.destroyed) return;
+        const old = [p.imgUrl, p.bareUrl];
         p.imgUrl = URL.createObjectURL(blob);
+        p.bareUrl = URL.createObjectURL(bareBlob);
         p.renderScale = scale;
         p.origImg.src = p.imgUrl;
         p.transImg.src = p.imgUrl;
-        if (old) {
+        // Inline formulas in the translation show the page bitmap, cropped; paragraphs sit
+        // on the text-free one.
+        p.overlay.style.setProperty('--tn-page', `url("${p.imgUrl}")`);
+        p.overlay.style.setProperty('--tn-bare', `url("${p.bareUrl}")`);
+        if (old[0]) {
           // Revoke once the new bitmap has replaced the old one on screen.
           void p.origImg
             .decode()
             .catch(() => {})
-            .finally(() => URL.revokeObjectURL(old));
+            .finally(() => old.forEach((u) => u && URL.revokeObjectURL(u)));
         }
       } finally {
         this.releaseRender();
@@ -464,53 +568,230 @@ export class PdfViewer {
     return p.rendering;
   }
 
-  /** Background color around each paragraph and whether its font is bold. */
+  /**
+   * Background color around each paragraph, the color of its glyphs, and its fonts: what
+   * the translation needs to look like the original.
+   */
   private sampleBlocks(p: Page, canvas: HTMLCanvasElement, scale: number): void {
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
     const units = p.units ?? [];
-    if (ctx && units.length > 0) {
-      const { width, height } = canvas;
-      const data = ctx.getImageData(0, 0, width, height).data;
-      const px = (x: number, y: number): [number, number, number] | undefined => {
-        const ix = Math.round(x * scale);
-        const iy = Math.round(y * scale);
-        if (ix < 0 || iy < 0 || ix >= width || iy >= height) return undefined;
+    if (units.length === 0) return;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    const { width, height } = canvas;
+    const data = ctx?.getImageData(0, 0, width, height).data;
+    const px = (x: number, y: number): Rgb | undefined => {
+      const ix = Math.round(x * scale);
+      const iy = Math.round(y * scale);
+      if (!data || ix < 0 || iy < 0 || ix >= width || iy >= height) return undefined;
+      const o = (iy * width + ix) * 4;
+      return [data[o]!, data[o + 1]!, data[o + 2]!];
+    };
+    /**
+     * Ink color of a glyph run. Anti-aliasing blends the ink with the background, so the
+     * average of the inked pixels is extended away from the background as far as the
+     * strongest pixel goes (and the RGB range allows).
+     */
+    const ink = (g: PdfGlyphs, bg: Rgb): Rgb | undefined => {
+      if (!data) return undefined;
+      const x0 = Math.max(0, Math.floor(g.x0 * scale));
+      const x1 = Math.min(width, Math.ceil(g.x1 * scale));
+      const y0 = Math.max(0, Math.floor(g.top * scale));
+      const y1 = Math.min(height, Math.ceil(g.bottom * scale));
+      const step = Math.max(1, Math.round(scale / 2));
+      const sum = [0, 0, 0];
+      let total = 0;
+      let max = 0;
+      for (let y = y0; y < y1; y += step) {
+        for (let x = x0; x < x1; x += step) {
+          const o = (y * width + x) * 4;
+          const dr = data[o]! - bg[0];
+          const dg = data[o + 1]! - bg[1];
+          const db = data[o + 2]! - bg[2];
+          const d = Math.hypot(dr, dg, db);
+          if (d < 60) continue;
+          sum[0]! += dr * d;
+          sum[1]! += dg * d;
+          sum[2]! += db * d;
+          total += d;
+          if (d > max) max = d;
+        }
+      }
+      if (total === 0) return undefined;
+      const v = sum.map((c) => c / total) as [number, number, number];
+      const len = Math.hypot(...v);
+      let t = max / len;
+      for (let i = 0; i < 3; i++) {
+        if (v[i]! > 0) t = Math.min(t, (255 - bg[i]!) / v[i]!);
+        else if (v[i]! < 0) t = Math.min(t, -bg[i]! / v[i]!);
+      }
+      const c = v.map((c, i) => Math.round(bg[i]! + c * t));
+      // Nearly neutral: gray (subpixel fringes tint black text slightly).
+      if (Math.max(...c) - Math.min(...c) < 24) c.fill(Math.round((c[0]! + c[1]! + c[2]!) / 3));
+      return c as unknown as Rgb;
+    };
+    const fonts = new Map<string, FontInfo>();
+    const fontOf = (id: string): FontInfo => {
+      let info = fonts.get(id);
+      if (!info) {
+        let font: PdfJsFont | null = null;
+        try {
+          // Fonts are loaded once the page has rendered.
+          const objs = p.proxy!.commonObjs;
+          if (objs.has(id)) font = objs.get(id) as PdfJsFont | null;
+        } catch {
+          // Unknown font: classified by its (missing) name.
+        }
+        info = classifyFont(font);
+        fonts.set(id, info);
+      }
+      return info;
+    };
+
+    /** Any glyph-colored pixel on row `y` between `x0` and `x1` (points)? */
+    const hasInk = (x0: number, x1: number, y: number, bg: Rgb): boolean => {
+      if (!data) return true;
+      const iy = Math.round(y * scale);
+      if (iy < 0 || iy >= height) return false;
+      const end = Math.min(width, Math.ceil(x1 * scale));
+      for (let ix = Math.max(0, Math.floor(x0 * scale)); ix < end; ix++) {
         const o = (iy * width + ix) * 4;
-        return [data[o]!, data[o + 1]!, data[o + 2]!];
-      };
-      for (const u of units) {
-        const { x, y, w, h } = u.block.rect;
-        const m = PAD + 1.5;
-        const samples = [
-          px(x - m, y - m),
-          px(x + w + m, y - m),
-          px(x - m, y + h + m),
-          px(x + w + m, y + h + m),
-          px(x + w / 2, y - m),
-          px(x + w / 2, y + h + m),
-          px(x - m, y + h / 2),
-          px(x + w + m, y + h / 2),
-        ].filter((s) => s !== undefined);
-        if (samples.length === 0) continue;
+        const d =
+          Math.abs(data[o]! - bg[0]) +
+          Math.abs(data[o + 1]! - bg[1]) +
+          Math.abs(data[o + 2]! - bg[2]);
+        if (d > 60) return true;
+      }
+      return false;
+    };
+    const allGlyphs = units.flatMap((u) => u.block.pieces.flatMap((p) => (p.g ? [p.g] : [])));
+    const texDoc = isTexBody(
+      units.map((u) => u.block),
+      fontOf,
+    );
+    for (const u of units) {
+      const { x, y, w, h } = u.block.rect;
+      const m = PAD + 1.5;
+      const samples = [
+        px(x - m, y - m),
+        px(x + w + m, y - m),
+        px(x - m, y + h + m),
+        px(x + w + m, y + h + m),
+        px(x + w / 2, y - m),
+        px(x + w / 2, y + h + m),
+        px(x - m, y + h / 2),
+        px(x + w + m, y + h / 2),
+      ].filter((s) => s !== undefined);
+      if (samples.length > 0) {
         const median = (i: number) =>
           samples.map((s) => s[i]!).sort((a, b) => a - b)[Math.floor(samples.length / 2)]!;
-        u.bg = `rgb(${median(0)}, ${median(1)}, ${median(2)})`;
+        u.bg = [median(0), median(1), median(2)];
+      }
+      if (!u.block.translatable) continue;
+      const colors = new Map<PdfGlyphs, Rgb | undefined>();
+      const colorOf = (g: PdfGlyphs) => {
+        if (!colors.has(g)) colors.set(g, ink(g, u.bg));
+        return colors.get(g);
+      };
+      u.markup = buildMarkup(u.block, fontOf, { colorOf, bg: u.bg, texDoc });
+      if (!hasProse(u.markup) && u.status === 'idle') u.status = 'skipped';
+      for (const f of u.markup.formulas) f.rect = this.mathCrop(f, allGlyphs, hasInk, u.bg);
+    }
+  }
+
+  /**
+   * Where to crop an inline formula from the page. Glyph boxes are estimates (a radical's
+   * box reaches far above it), so the crop stops at the lines above and below, then shrinks
+   * to the rows that have ink.
+   */
+  private mathCrop(
+    span: MathSpan,
+    all: PdfGlyphs[],
+    hasInk: (x0: number, x1: number, y: number, bg: Rgb) => boolean,
+    bg: Rgb,
+  ): PdfRect {
+    const { x, w } = span.rect;
+    const fs = Math.max(...span.glyphs.map((g) => g.lineFs));
+    const own = new Set(span.glyphs);
+    let top = span.rect.y;
+    let bottom = span.rect.y + span.rect.h;
+    for (const g of all) {
+      if (own.has(g) || g.x1 <= x || g.x0 >= x + w) continue;
+      // Glyph boxes are estimates too: allow for deep descenders and tall ascenders.
+      if (g.lineBaseline < span.baseline - 0.5 * fs) {
+        top = Math.max(top, g.bottom, g.lineBaseline + 0.3 * g.lineFs);
+      } else if (g.lineBaseline > span.baseline + 0.5 * fs) {
+        bottom = Math.min(bottom, g.top, g.lineBaseline - 0.8 * g.lineFs);
       }
     }
-    // Fonts are loaded once the page has rendered.
+    // Never cut into the line's own ascenders and descenders.
+    top = Math.min(top, span.baseline - 0.72 * fs);
+    bottom = Math.max(bottom, span.baseline + 0.25 * fs);
+    const step = 0.25;
+    while (top < span.baseline - 0.4 * fs && !hasInk(x, x + w, top, bg)) top += step;
+    while (bottom > span.baseline + 0.05 * fs && !hasInk(x, x + w, bottom, bg)) bottom -= step;
+    return { x, y: top, w, h: bottom - top };
+  }
+
+  /**
+   * Lines of the text-free page that run across a paragraph's whole patch: table rules and
+   * frames. Shorter lines (underlines, fraction bars, radicals) belong to the text and stay
+   * covered.
+   */
+  private findRules(p: Page, bare: HTMLCanvasElement, scale: number): void {
+    const units = (p.units ?? []).filter((u) => u.status !== 'skipped');
+    if (units.length === 0) return;
+    const { width, height } = bare;
+    const data = bare
+      .getContext('2d', { willReadFrequently: true })
+      ?.getImageData(0, 0, width, height).data;
+    if (!data) return;
     for (const u of units) {
-      try {
-        const objs = p.proxy!.commonObjs;
-        if (!objs.has(u.block.fontName)) continue;
-        const font = objs.get(u.block.fontName) as {
-          bold?: boolean;
-          black?: boolean;
-          name?: string;
-        } | null;
-        u.bold = !!(font?.bold || font?.black || BOLD_FONT.test(font?.name ?? ''));
-      } catch {
-        // Unknown font: regular weight.
+      const r = patchRect(u.block);
+      const x0 = Math.max(0, Math.round(r.x * scale));
+      const x1 = Math.min(width, Math.round((r.x + r.w) * scale));
+      const y0 = Math.max(0, Math.round(r.y * scale));
+      const y1 = Math.min(height, Math.round((r.y + r.h) * scale));
+      if (x1 - x0 < 4 || y1 - y0 < 4) continue;
+      const inked = (x: number, y: number) => {
+        const o = (y * width + x) * 4;
+        return (
+          Math.abs(data[o]! - u.bg[0]) +
+            Math.abs(data[o + 1]! - u.bg[1]) +
+            Math.abs(data[o + 2]! - u.bg[2]) >
+          60
+        );
+      };
+      const rules: PdfRect[] = [];
+      const band = (start: number, end: number, horizontal: boolean) => {
+        // Half a device pixel of anti-aliasing on each side, but never beyond the patch
+        // (that would count as overflow when the translation is fitted).
+        const a = Math.max(horizontal ? r.y : r.x, (start - 0.5) / scale);
+        const b = Math.min(horizontal ? r.y + r.h : r.x + r.w, (end + 0.5) / scale);
+        rules.push(
+          horizontal ? { x: r.x, y: a, w: r.w, h: b - a } : { x: a, y: r.y, w: b - a, h: r.h },
+        );
+      };
+      let start = -1;
+      for (let y = y0; y <= y1; y++) {
+        let n = 0;
+        if (y < y1) for (let x = x0; x < x1; x++) if (inked(x, y)) n++;
+        const full = y < y1 && n >= 0.9 * (x1 - x0);
+        if (full && start < 0) start = y;
+        if (!full && start >= 0) {
+          band(start, y, true);
+          start = -1;
+        }
       }
+      for (let x = x0; x <= x1; x++) {
+        let n = 0;
+        if (x < x1) for (let y = y0; y < y1; y++) if (inked(x, y)) n++;
+        const full = x < x1 && n >= 0.9 * (y1 - y0);
+        if (full && start < 0) start = x;
+        if (!full && start >= 0) {
+          band(start, x, false);
+          start = -1;
+        }
+      }
+      if (rules.length > 0) u.rules = rules;
     }
   }
 
@@ -533,7 +814,7 @@ export class PdfViewer {
 
   private enqueue(u: Unit): void {
     if (!this._active || u.status !== 'idle') return;
-    const cached = this.memory.get(u.block.text);
+    const cached = this.memory.get(payloadOf(u));
     if (cached !== undefined) {
       this.renderDone(u, cached);
       return;
@@ -576,7 +857,7 @@ export class PdfViewer {
     }
 
     const batches = createBatches(
-      todo.map((u) => ({ text: u.block.text, data: u })),
+      todo.map((u) => ({ text: payloadOf(u), data: u })),
       cfg.maxChars,
       cfg.maxSegments,
     );
@@ -597,7 +878,7 @@ export class PdfViewer {
           if (!fresh(u)) return;
           const r = results[i];
           if (r?.ok) {
-            this.memory.set(u.block.text, r.text);
+            this.memory.set(payloadOf(u), r.text);
             this.renderDone(u, r.text);
           } else if (r && r.error.kind === 'aborted') {
             this.resetUnit(u);
@@ -632,11 +913,13 @@ export class PdfViewer {
   private ensureEl(u: Unit): HTMLElement {
     if (!u.el) {
       const el = this.scroller.ownerDocument.createElement('div');
-      const { x, y, w, h } = u.block.rect;
-      el.style.left = `${(x - PAD) * L}px`;
-      el.style.top = `${(y - PAD) * L}px`;
-      el.style.width = `${(w + 2 * PAD) * L}px`;
-      el.style.height = `${(h + 2 * PAD) * L}px`;
+      const r = patchRect(u.block);
+      el.style.left = `${r.x * L}px`;
+      el.style.top = `${r.y * L}px`;
+      el.style.width = `${r.w * L}px`;
+      el.style.height = `${r.h * L}px`;
+      const marker = u.block.marker;
+      if (marker) el.style.paddingLeft = `${(marker.textX - r.x) * L}px`;
       u.page.overlay.append(el);
       u.el = el;
     }
@@ -669,13 +952,119 @@ export class PdfViewer {
     const el = this.ensureEl(u);
     el.classList.add('tn-done');
     el.lang = this.deps.getConfig().targetLang;
-    el.style.background = u.bg;
-    el.style.fontWeight = u.bold ? '700' : '';
-    el.style.textAlign = u.block.lines >= 2 ? 'justify' : '';
+    const base = u.markup?.base;
+    el.dataset.family = base?.family ?? 'sans';
+    el.style.background = cssColor(u.bg);
+    // Table rules under the patch stay visible (drawn from the text-free page).
+    const box = patchRect(u.block);
+    for (const rule of u.rules ?? []) {
+      const line = this.scroller.ownerDocument.createElement('span');
+      line.className = 'tn-pdf-rule';
+      line.style.left = `${(rule.x - box.x) * L}px`;
+      line.style.top = `${(rule.y - box.y) * L}px`;
+      line.style.width = `${rule.w * L}px`;
+      line.style.height = `${rule.h * L}px`;
+      line.style.backgroundSize = `${u.page.w * L}px ${u.page.h * L}px`;
+      line.style.backgroundPosition = `${-rule.x * L}px ${-rule.y * L}px`;
+      el.append(line);
+    }
+    el.style.color = base?.color ? cssColor(base.color) : '';
+    el.style.fontWeight = base?.bold ? '700' : '';
+    const { rect } = u.block;
+    // A single centered line (a title, a caption) keeps its axis when the translation is
+    // shorter: centered on the page, and clearly narrower than a full line of text.
+    const centered =
+      u.block.centered ||
+      (u.block.lines === 1 &&
+        rect.x > 0.2 * u.page.w &&
+        Math.abs(rect.x + rect.w / 2 - u.page.w / 2) < 0.25 * u.block.fontSize);
+    el.style.textAlign = centered ? 'center' : u.block.lines >= 2 ? 'justify' : '';
     const span = this.scroller.ownerDocument.createElement('span');
-    span.textContent = text;
+    this.fillTranslation(span, u, text);
     el.append(span);
     this.fitUnit(u);
+  }
+
+  /** The translated text with styled runs and inline formulas put back. */
+  private fillTranslation(container: HTMLElement, u: Unit, text: string): void {
+    const d = this.scroller.ownerDocument;
+    const styles = u.markup?.styles ?? [];
+    const formulas = u.markup?.formulas ?? [];
+    if (styles.length + formulas.length === 0) {
+      container.textContent = text;
+      return;
+    }
+    /** Text with each `<m id="N"/>` placeholder turned back into its formula. */
+    const withFormulas = (t: string): (string | HTMLElement)[] => {
+      const out: (string | HTMLElement)[] = [];
+      let cursor = 0;
+      for (const m of t.matchAll(ATOM_TAG_RE)) {
+        if (m.index > cursor) out.push(t.slice(cursor, m.index));
+        cursor = m.index + m[0].length;
+        const f = m[1] === undefined ? undefined : formulas[Number(m[1]) - 1];
+        if (f) out.push(this.mathElement(u, f));
+      }
+      if (cursor < t.length) out.push(t.slice(cursor));
+      return out;
+    };
+    const nodes: (string | HTMLElement)[] = [];
+    for (const part of parseInlineLinks(text, styles.length)) {
+      if (part.type === 'text') {
+        nodes.push(...withFormulas(part.text));
+        continue;
+      }
+      const span = styles[part.index]!;
+      const el = d.createElement(span.bold ? 'b' : 'span');
+      if (!span.bold) el.style.fontWeight = 'normal';
+      if (span.color) el.style.color = cssColor(span.color);
+      if (span.mono) el.className = 'tn-pdf-code';
+      if (span.size) el.style.fontSize = `${span.size}em`;
+      el.append(...withFormulas(part.text));
+      nodes.push(el);
+    }
+    // Keep punctuation on the formula's line: a line must not start with "，" or end with "（".
+    for (let i = 0; i < nodes.length; i++) {
+      const math = nodes[i];
+      if (!math || typeof math === 'string' || !math.classList.contains('tn-pdf-math')) continue;
+      const before = nodes[i - 1];
+      const after = nodes[i + 1];
+      const open = typeof before === 'string' ? (OPENING_PUNCT.exec(before)?.[0] ?? '') : '';
+      const close = typeof after === 'string' ? (CLOSING_PUNCT.exec(after)?.[0] ?? '') : '';
+      if (!open && !close) continue;
+      const group = d.createElement('span');
+      group.className = 'tn-pdf-nowrap';
+      group.append(open, math, close);
+      nodes[i] = group;
+      if (open) nodes[i - 1] = (before as string).slice(0, -open.length);
+      if (close) nodes[i + 1] = (after as string).slice(close.length);
+    }
+    container.append(...nodes);
+  }
+
+  /**
+   * An inline formula, cropped from the page bitmap and sized in em, so it scales with the
+   * fitted text. Its extracted text is kept, invisible, for selection and copy.
+   */
+  private mathElement(u: Unit, span: MathSpan): HTMLElement {
+    const d = this.scroller.ownerDocument;
+    const page = u.page;
+    const em = (pt: number) => `${pt / u.block.fontSize}em`;
+    const padX = 0.6;
+    const padY = 0.4;
+    const x = span.rect.x - padX;
+    const y = span.rect.y - padY;
+    const w = span.rect.w + 2 * padX;
+    const h = span.rect.h + 2 * padY;
+    const el = d.createElement('span');
+    el.className = 'tn-pdf-math';
+    el.style.width = em(w);
+    el.style.height = em(h);
+    el.style.backgroundSize = `${em(page.w)} ${em(page.h)}`;
+    el.style.backgroundPosition = `${em(-x)} ${em(-y)}`;
+    el.style.verticalAlign = em(-(y + h - span.baseline));
+    el.style.lineHeight = em(h);
+    el.textContent = span.text;
+    return el;
   }
 
   /** Largest font size (up to the original's) at which the translation fits the box. */

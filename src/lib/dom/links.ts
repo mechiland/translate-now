@@ -127,7 +127,7 @@ export interface RenderLinksOptions {
 }
 
 /** `<m id="N"/>`, also tolerating `<m id=N>`, quotes and a redundant `</m>`. */
-const ATOM_TAG_RE = /<m\b[^>]*?\bid\s*=\s*["']?(\d+)["']?[^>]*>(?:\s*<\/m>)?|<\/m>/gi;
+export const ATOM_TAG_RE = /<m\b[^>]*?\bid\s*=\s*["']?(\d+)["']?[^>]*>(?:\s*<\/m>)?|<\/m>/gi;
 
 /** A copy of a formula for the translation, without ids that would duplicate the original's. */
 function cloneAtom(source: Element): Element {
