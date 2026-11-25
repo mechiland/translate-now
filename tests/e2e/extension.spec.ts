@@ -191,6 +191,136 @@ test('switching display mode does not re-request', async ({ context, sw, server 
   expect(server.requests.length).toBe(before);
 });
 
+test('replaces a flex-row label in place when switching to translation-only', async ({
+  context,
+  sw,
+  server,
+}) => {
+  await configure(sw, baseSettings(server));
+  const page = await openFixture(context, server);
+  await page.locator('#dynamic').evaluate((el) => {
+    el.innerHTML = `<button id="chapter-link" style="display:flex;align-items:center;gap:8px">
+      Read the complete first chapter in the expanded reader
+      <svg width="12" height="12" aria-hidden="true"><circle cx="6" cy="6" r="6" /></svg>
+    </button>`;
+    el.querySelector('button')!.onclick = () => el.setAttribute('data-clicked', '');
+  });
+  await sendToPage(sw, page.url(), { type: 'page:toggle' });
+  await expect(page.locator('#chapter-link + tn-translation')).toHaveText(
+    '[ZH] Read the complete first chapter in the expanded reader',
+  );
+  await sw.evaluate(async () => {
+    const { settings } = await chrome.storage.local.get('settings');
+    await chrome.storage.local.set({
+      settings: { ...(settings as object), displayMode: 'translation-only' },
+    });
+  });
+  await expect(translationOf(page, 'chapter-link')).toBeVisible();
+  await expect(page.locator('#chapter-link')).toHaveCSS('font-size', '0px');
+  await expect(page.locator('#chapter-link svg')).toBeVisible();
+  await translationOf(page, 'chapter-link').click();
+  await expect(page.locator('#dynamic[data-clicked]')).toHaveCount(1);
+});
+
+test('shows a second line outside an ellipsized book title in bilingual mode', async ({
+  context,
+  sw,
+  server,
+}) => {
+  await configure(sw, baseSettings(server));
+  const page = await openFixture(context, server);
+  const title = page.locator('#book-preview');
+  await page.locator('#dynamic').evaluate((el) => {
+    el.innerHTML = `<h3 id="book-preview" style="width:130px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+      The Emerald Library</h3>`;
+  });
+  await sendToPage(sw, page.url(), { type: 'page:toggle' });
+  const translation = page.locator('#book-preview + tn-translation.tn-done');
+  await expect(translation).toHaveText('[ZH] The Emerald Library');
+  expect((await translation.boundingBox())!.y).toBeGreaterThanOrEqual(
+    (await title.boundingBox())!.y + (await title.boundingBox())!.height,
+  );
+  await sw.evaluate(async () => {
+    const { settings } = await chrome.storage.local.get('settings');
+    await chrome.storage.local.set({
+      settings: { ...(settings as object), displayMode: 'translation-only' },
+    });
+  });
+  await expect(translationOf(page, 'book-preview')).toHaveCSS('white-space', 'nowrap');
+  await expect(title).toHaveCSS('font-size', '0px');
+});
+
+test('keeps a zero-font carousel label out of the translation', async ({ context, sw, server }) => {
+  await configure(sw, baseSettings(server));
+  const page = await openFixture(context, server);
+  await page.locator('#dynamic').evaluate((el) => {
+    el.innerHTML = '<button id="carousel-next" style="font-size:0">Next slide</button>';
+  });
+  await sendToPage(sw, page.url(), { type: 'page:toggle' });
+  await expect(translationOf(page, 'p1')).toBeVisible();
+  await expect(translationOf(page, 'carousel-next')).toHaveCount(0);
+  expect(server.requests.map((request) => request.user).join('\n')).not.toContain('Next slide');
+});
+
+test('shows translations through a site stylesheet that hides undefined custom elements', async ({
+  context,
+  sw,
+  server,
+}) => {
+  await configure(sw, baseSettings(server, { displayMode: 'translation-only' }));
+  const page = await openFixture(context, server);
+  await page.addStyleTag({ content: ':not(:defined) { visibility: hidden; }' });
+  await sendToPage(sw, page.url(), { type: 'page:toggle' });
+  await expect(translationOf(page, 'p1')).toBeVisible();
+  await expect(page.locator('#p1')).toHaveCSS('font-size', '0px');
+});
+
+test('keeps words readable in a narrow book-title flex item', async ({ context, sw, server }) => {
+  server.setMode('english');
+  await configure(sw, baseSettings(server, { targetLang: 'en', displayMode: 'translation-only' }));
+  const page = await openFixture(context, server);
+  await page.locator('#dynamic').evaluate((el) => {
+    el.innerHTML = `<div style="display:flex;width:170px;font:16px monospace">
+      <span style="flex:0 0 25px" translate="no">›</span>
+      <h3 id="narrow-title" style="flex:1;margin:0;font:inherit">讀者回到失落的圖書館</h3>
+      <span style="width:116px;min-width:0" translate="no">Author</span>
+    </div>`;
+  });
+  await sendToPage(sw, page.url(), { type: 'page:toggle' });
+  const translated = translationOf(page, 'narrow-title').locator('.tn-text');
+  await expect(translated).toBeVisible();
+  const firstWordLines = await translated.evaluate((el) => {
+    const text = el.firstChild!;
+    const word = /\p{L}+/u.exec(text.textContent!)!;
+    const range = document.createRange();
+    range.setStart(text, word.index);
+    range.setEnd(text, word.index + word[0].length);
+    return range.getClientRects().length;
+  });
+  expect(firstWordLines).toBe(1);
+});
+
+test('translates a pre-rendered reader panel when the site reveals it', async ({
+  context,
+  sw,
+  server,
+}) => {
+  await configure(sw, baseSettings(server));
+  const page = await openFixture(context, server);
+  const panel = page.locator('#dynamic');
+  await panel.evaluate((el) => {
+    el.innerHTML =
+      '<section hidden><p id="chapter-text">The next chapter begins at the old library.</p></section>';
+  });
+  await sendToPage(sw, page.url(), { type: 'page:toggle' });
+  await expect(translationOf(page, 'p1')).toBeVisible();
+  await expect(translationOf(page, 'chapter-text')).toHaveCount(0);
+  await panel.locator('section').evaluate((el) => el.removeAttribute('hidden'));
+  await expect(translationOf(page, 'chapter-text')).toHaveText(
+    '[ZH] The next chapter begins at the old library.',
+  );
+});
+
 test('translates dynamically inserted content', async ({ context, sw, server }) => {
   await configure(sw, baseSettings(server));
   const page = await openFixture(context, server);

@@ -67,6 +67,7 @@ const TEXT_INLINE_TAGS = new Set([
   'ins',
   'kbd',
   'mark',
+  'noindex',
   // Only reached when laid out inline, e.g. paragraphs run together in a clamped preview.
   'p',
   'q',
@@ -180,6 +181,9 @@ export interface ElementStyle {
   flexDirection?: string;
   /** Visually hidden (visibility: hidden, or an sr-only style 1px/clipped box). */
   hidden?: boolean;
+  zeroFont?: boolean;
+  /** A book-card title or other preview which clips lines inside its own box. */
+  linePreview?: boolean;
   /** Line breaks in the text are shown (white-space: pre-wrap / pre-line / break-spaces). */
   keepsNewlines?: boolean;
 }
@@ -310,6 +314,10 @@ function defaultGetStyle(el: Element): ElementStyle {
       display: cs.display,
       flexDirection: cs.flexDirection,
       hidden: isVisuallyHidden(cs),
+      zeroFont: parseFloat(cs.fontSize) === 0,
+      linePreview:
+        (['hidden', 'clip'].includes(cs.overflowX) || ['hidden', 'clip'].includes(cs.overflowY)) &&
+        (cs.textOverflow === 'ellipsis' || parseInt(cs.getPropertyValue('-webkit-line-clamp')) > 0),
       keepsNewlines: keepsNewlines(cs),
     };
   } catch {
@@ -374,7 +382,12 @@ function isDecor(node: Node): node is Element {
   if (node.nodeType !== 1) return false;
   const tag = (node as Element).localName;
   if (tag === 'br' || tag === 'wbr' || tag === TRANSLATION_TAG || tag === UI_TAG) return false;
-  return !/\S/.test(node.textContent ?? '');
+  return isIconFont(node as Element) || !/\S/.test(node.textContent ?? '');
+}
+
+/** Material icon fonts render the element's text as a glyph through a ligature. */
+function isIconFont(el: Element): boolean {
+  return Array.from(el.classList).some((name) => /^material-(?:icons|symbols)(?:-|$)/.test(name));
 }
 
 /** Inline elements that are only text for translation-only purposes, besides `TEXT_INLINE_TAGS`. */
@@ -507,10 +520,14 @@ export function collectSegments(root: Element, opts: SegmenterOptions = {}): Seg
     return st;
   };
   const getDisplay = (el: Element): string => getStyle(el).display;
+  const translationOnly =
+    root.ownerDocument.documentElement.getAttribute('data-tn-mode') === 'translation-only';
   const placementFor = (block: Element, text: string): Segment['placement'] => {
     const parent = block.parentElement;
-    if (!parent || block.localName === 'body' || isShortSnippet(text)) return 'inside';
-    return isRowContainer(getStyle(block)) && isFlowContainer(getStyle(parent))
+    if (!parent || block.localName === 'body' || !isFlowContainer(getStyle(parent)))
+      return 'inside';
+    const style = getStyle(block);
+    return style.linePreview || (!isShortSnippet(text) && isRowContainer(style))
       ? 'after'
       : 'inside';
   };
@@ -562,9 +579,7 @@ export function collectSegments(root: Element, opts: SegmenterOptions = {}): Seg
           marks,
           atoms,
           wrapLink,
-          // Translation-only mode hides the original inside the block; not possible when the
-          // translation lives outside it (the block may be a button the user still needs).
-          fullBlock: r.textOnly && placement === 'inside',
+          fullBlock: r.textOnly,
           decor: r.decor,
           placement,
         });
@@ -586,8 +601,15 @@ export function collectSegments(root: Element, opts: SegmenterOptions = {}): Seg
     ): void => {
       if (node.nodeType === 3) {
         let data = (node as Text).data;
-        // Text that shows its line breaks (posts on social sites): keep them as <br>s.
         const parent = node.parentElement;
+        if (
+          parent &&
+          getStyle(parent).zeroFont &&
+          !(translationOnly && parent.closest(`[${HIDE_ATTR}]`))
+        ) {
+          return;
+        }
+        // Text that shows its line breaks (posts on social sites): keep them as <br>s.
         if (data.includes('\n') && parent && getStyle(parent).keepsNewlines) {
           data = data.replace(/\r?\n/g, BR_MARK);
         }
@@ -618,7 +640,7 @@ export function collectSegments(root: Element, opts: SegmenterOptions = {}): Seg
       // Screen-reader-only labels and invisible boxes: not translated, and not a paragraph break
       // either (an sr-only span is position:absolute, which computes as display:block).
       if (style.hidden) return;
-      if (isSkipped(el)) {
+      if (isSkipped(el) || isIconFont(el)) {
         if (block) {
           flush();
           interrupted = true;

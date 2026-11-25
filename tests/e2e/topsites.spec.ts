@@ -3,18 +3,23 @@
 // readable and styled like the page, and save screenshots for a visual pass. Network required;
 // uses the mock LLM in "cjk" mode (pseudo-Chinese of realistic length), so no API key needed.
 // Run with: TOP_SITES=1 pnpm exec playwright test topsites --workers=8
-// Pick sites with TOP_SITES=github.com,nytimes.com. Output goes to TOP_SITES_OUT
+// Use BOOK_SITES=1 for the 100-site Books and Literature corpus (BOOK_SITES=wattpad.com for a subset).
+// Pick general sites with TOP_SITES=github.com,nytimes.com. Output goes to TOP_SITES_OUT
 // (default tests/e2e/screenshots/topsites): <host>-original|bilingual|translation-only.png
-// and <host>.json with the readability findings.
+// and <host>.json with the outcome and readability findings. Set TOP_SITES_SCREENSHOTS=0 for JSON only.
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { chromium, type Page, type Worker } from '@playwright/test';
+import { stripVTControlCharacters } from 'node:util';
+import { chromium, expect, type Page, type Worker } from '@playwright/test';
+import { BOOK_SITES } from './bookSites';
 import { baseSettings, configure, sendToPage, test as base } from './harness';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const extensionPath = path.resolve(here, '../../.output/chrome-mv3');
-const OUT = process.env.TOP_SITES_OUT ?? path.resolve(here, 'screenshots/topsites');
+const books = process.env.BOOK_SITES;
+const OUT =
+  process.env.TOP_SITES_OUT ?? path.resolve(here, 'screenshots', books ? 'books' : 'topsites');
 
 // https://en.wikipedia.org/wiki/List_of_most-visited_websites (November 2026), adult sites left out.
 const ALL_SITES = [
@@ -28,8 +33,11 @@ const ALL_SITES = [
   'zoom.com', 't.me', 'apple.com',
 ]; // prettier-ignore
 
-const pick = process.env.TOP_SITES?.split(',').filter((s) => s && s !== '1');
-const SITES = pick?.length ? ALL_SITES.filter((s) => pick.some((p) => s.startsWith(p))) : ALL_SITES;
+const pick = (books || process.env.TOP_SITES)?.split(',').filter((s) => s && s !== '1');
+const candidates = books ? BOOK_SITES : ALL_SITES;
+const SITES = pick?.length
+  ? candidates.filter((s) => pick.some((p) => s.startsWith(p)))
+  : candidates;
 const UA =
   'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36';
 
@@ -49,7 +57,7 @@ const test = base.extend({
   },
 });
 
-test.skip(!process.env.TOP_SITES, 'set TOP_SITES=1 to run');
+test.skip(!books && !process.env.TOP_SITES, 'set TOP_SITES=1 or BOOK_SITES=1 to run');
 test.describe.configure({ mode: 'parallel', timeout: 150_000 });
 
 interface Finding {
@@ -216,7 +224,7 @@ function inspect(mode: string) {
       const why =
         (texts.length || holder) && tr.width < 2
           ? 'zero-size'
-          : tr.right < 0 || tr.left > innerWidth + 2000
+          : (texts.length || holder) && (tr.right < 0 || tr.left > innerWidth + 2000)
             ? 'off-screen'
             : scs && parseColor(scs.color)?.[3] === 0
               ? 'transparent'
@@ -255,7 +263,7 @@ async function settle(sw: Worker, page: Page) {
     if (key !== last) {
       last = key;
       stableSince = Date.now();
-    } else if (s && s.pending === 0 && Date.now() - stableSince > 1500) return s;
+    } else if (s && s.pending === 0 && Date.now() - stableSince > 850) return s;
     await page.waitForTimeout(300);
   }
   return JSON.parse(last || 'null');
@@ -268,52 +276,129 @@ async function setMode(sw: Worker, displayMode: string) {
   }, displayMode);
 }
 
+async function openSite(page: Page, site: string) {
+  const start = books && site === 'books.com.tw' ? 'www.books.com.tw/web/books' : site;
+  try {
+    return await page.goto(`https://${start}`, { waitUntil: 'domcontentloaded', timeout: 16_000 });
+  } catch (error) {
+    if (!books || start.includes('/') || start.startsWith('www.')) throw error;
+    return page.goto(`https://www.${site}`, { waitUntil: 'domcontentloaded', timeout: 16_000 });
+  }
+}
+
+async function activateMode(sw: Worker, page: Page, mode: string) {
+  await setMode(sw, mode);
+  await expect
+    .poll(
+      async () => {
+        const state = (await sendToPage(sw, page.url(), { type: 'page:state' }).catch(
+          () => null,
+        )) as {
+          translated: boolean;
+        } | null;
+        if (state && !state.translated)
+          await sendToPage(sw, page.url(), { type: 'page:set', on: true });
+        return page
+          .locator('html')
+          .getAttribute('data-tn-mode', { timeout: 1000 })
+          .catch(() => null);
+      },
+      { timeout: 9000 },
+    )
+    .toBe(mode);
+}
+
 for (const site of SITES) {
   test(`top site: ${site}`, async ({ context, sw, server }) => {
-    server.setMode('cjk');
-    await configure(sw, { ...baseSettings(server), displayMode: 'bilingual' });
     const host = site.split('/')[0]!;
-    const report: Record<string, unknown> = { site };
+    const report: Record<string, unknown> = { site, status: 'unavailable' };
     const page = await context.newPage();
     try {
-      await page.goto(`https://${site}`, { waitUntil: 'domcontentloaded', timeout: 45_000 });
-      await page.waitForLoadState('load', { timeout: 10_000 }).catch(() => {});
-      await page.waitForTimeout(2500);
+      const response = await openSite(page, site);
+      await page.waitForTimeout(500);
       report.finalUrl = page.url();
       report.title = await page.title();
+      report.httpStatus = response?.status();
+      if (response && response.status() >= 400) throw new Error(`HTTP ${response.status()}`);
+      if (response?.status() === 202 && !report.title) throw new Error('HTTP 202 without a page');
+      if (
+        /^(just a moment|access denied|attention required|robot check|request (?:blocked|rejected)|проверка$)/i.test(
+          String(report.title),
+        )
+      ) {
+        throw new Error('Access or bot challenge');
+      }
+
+      await page
+        .waitForFunction(() => /\p{L}/u.test(document.body?.innerText ?? ''), null, {
+          timeout: 6000,
+        })
+        .catch(() => {
+          throw new Error('No readable page text');
+        });
+      report.finalUrl = page.url();
+      report.title = await page.title();
+      const { sourceLang, eastAsian } = await page.evaluate(() => {
+        const text = document.body.innerText.slice(0, 4000);
+        const cjk =
+          text.match(/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/gu)
+            ?.length ?? 0;
+        const letters = text.match(/\p{L}/gu)?.length ?? 0;
+        return {
+          sourceLang: document.documentElement.lang,
+          eastAsian: cjk > 0 && cjk * 4 > letters,
+        };
+      });
+      report.status = 'translation-error';
+      const targetLang =
+        books && (/^(zh|ja|ko)(?:[-_]|$)/i.test(sourceLang) || eastAsian) ? 'en' : 'zh-CN';
+      report.sourceLang = sourceLang;
+      report.targetLang = targetLang;
+      server.setMode(targetLang === 'en' ? 'english' : 'cjk');
+      await configure(sw, baseSettings(server, { targetLang, displayMode: 'bilingual' }));
+      await expect
+        .poll(() => sendToPage(sw, page.url(), { type: 'page:state' }).catch(() => null), {
+          timeout: 5000,
+        })
+        .toBeTruthy();
       fs.mkdirSync(OUT, { recursive: true });
       const baseOverflow = await page.evaluate(
         () => document.documentElement.scrollWidth > innerWidth + 1,
       );
-      await page.screenshot({ path: path.join(OUT, `${host}-original.png`) });
+      if (process.env.TOP_SITES_SCREENSHOTS !== '0')
+        await page.screenshot({ path: path.join(OUT, `${host}-original.png`), timeout: 5000 });
 
-      await sendToPage(sw, page.url(), { type: 'page:set', on: true });
+      await activateMode(sw, page, 'bilingual');
       // Scroll a little so lazily translated content below the fold gets checked too.
-      for (const y of [900, 1800, 0]) {
+      for (const y of [0, 900, 1800, 0]) {
         await page.evaluate((y) => scrollTo(0, y), y);
         await settle(sw, page);
       }
-      report.state = await sendToPage(sw, page.url(), { type: 'page:state' });
-
+      let bothVisible = true;
       for (const mode of ['bilingual', 'translation-only']) {
-        await setMode(sw, mode);
-        await page.waitForTimeout(600);
+        if (mode !== 'bilingual') await activateMode(sw, page, mode);
         await page.evaluate(() => scrollTo(0, 0));
-        await page.waitForTimeout(300);
+        await settle(sw, page);
         const result = await page.evaluate(inspect, mode);
+        bothVisible &&= result.visible > 0;
         const counts: Record<string, number> = {};
         for (const f of result.findings as Finding[]) counts[f.kind] = (counts[f.kind] ?? 0) + 1;
         report[mode] = {
           ...result,
+          state: await sendToPage(sw, page.url(), { type: 'page:state' }),
           newHOverflow: result.hOverflow && !baseOverflow,
           counts,
           findings: (result.findings as Finding[]).slice(0, 25),
         };
-        await page.screenshot({ path: path.join(OUT, `${host}-${mode}.png`) });
+        if (process.env.TOP_SITES_SCREENSHOTS !== '0')
+          await page.screenshot({ path: path.join(OUT, `${host}-${mode}.png`), timeout: 5000 });
       }
+      report.status = bothVisible ? 'translated' : 'no-visible-translations';
     } catch (e) {
-      report.error = e instanceof Error ? e.message.split('\n')[0] : String(e);
+      report.error =
+        e instanceof Error ? stripVTControlCharacters(e.message).split('\n')[0] : String(e);
     } finally {
+      report.requests = server.requests.length;
       fs.mkdirSync(OUT, { recursive: true });
       fs.writeFileSync(path.join(OUT, `${host}.json`), JSON.stringify(report, null, 2));
     }
