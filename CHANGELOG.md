@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.1](https://github.com/mechiland/translate-now/compare/v0.5.0...v0.5.1) (2026-11-24)
+
+
+### Bug Fixes
+
+* keep translations readable and in the original's style on popular sites ([#26](https://github.com/mechiland/translate-now/issues/26)) ([65ec78a](https://github.com/mechiland/translate-now/commit/65ec78a6e5f4bf7a946b323651cfcfe35900cc61))
+* stop translations flickering in translation-only mode and keep post line breaks ([#24](https://github.com/mechiland/translate-now/issues/24)) ([4f4712e](https://github.com/mechiland/translate-now/commit/4f4712e1bbc2a6424fae99a6ebfb42edcd0de641))
+
 ## [0.5.0](https://github.com/mechiland/translate-now/compare/v0.4.0...v0.5.0) (2026-11-24)
 
 
