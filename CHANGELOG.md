@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.2](https://github.com/mechiland/translate-now/compare/v0.5.1...v0.5.2) (2026-11-25)
+
+
+### Bug Fixes
+
+* keep book-site translations visible and readable ([#27](https://github.com/mechiland/translate-now/issues/27)) ([fe48a27](https://github.com/mechiland/translate-now/commit/fe48a27a0805ec4819331b3f6ef0b1ebdf011e52))
+
 ## [0.5.1](https://github.com/mechiland/translate-now/compare/v0.5.0...v0.5.1) (2026-11-24)
 
 
