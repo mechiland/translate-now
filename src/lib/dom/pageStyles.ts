@@ -9,6 +9,8 @@ export const PAGE_CSS = `
 /* display is !important: pages restyle every child of a container (e.g. "> * { display: inline }"). */
 ${T} {
   display: block !important;
+  /* Component sites may hide every :not(:defined) element before hydration. */
+  visibility: inherit !important;
   margin: 0.3em 0 0.1em;
   white-space: pre-line;
   word-break: normal;
@@ -89,5 +91,6 @@ ${HIDDEN} > ${T} {
   border: 0 !important;
   padding: 0 !important;
 }
+${HIDDEN} > ${T}.tn-nowrap { white-space: nowrap; }
 ${HIDDEN.replace('[data-tn-hide]', 'li[data-tn-hide]')}::marker { font-size: var(--tn-marker-fs, 16px); }
 `;

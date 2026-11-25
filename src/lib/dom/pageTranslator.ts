@@ -105,6 +105,9 @@ export class PageTranslator {
         childList: true,
         subtree: true,
         characterData: true,
+        attributes: true,
+        attributeFilter: ['class', 'hidden', 'open', 'style'],
+        attributeOldValue: true,
       });
     }
     this.scan();
@@ -152,7 +155,13 @@ export class PageTranslator {
     // Hiding the original frees room (or the reverse): fit the translations again.
     if (modeChanged) {
       for (const u of this.units.values()) {
-        if (u.el && u.status === 'done') this.scheduleFitCheck(u);
+        if (!u.el || u.status !== 'done') continue;
+        if (u.fullBlock && u.placement === 'after') {
+          const text = this.memory.get(u.payload);
+          if (text !== undefined) this.renderDone(u, text);
+        } else {
+          this.scheduleFitCheck(u);
+        }
       }
     }
   }
@@ -337,6 +346,12 @@ export class PageTranslator {
     const relevant = records.some((r) => {
       if (isInsideInjected(r.target)) return false;
       if (r.type === 'characterData') return true;
+      if (r.type === 'attributes') {
+        if (r.attributeName !== 'style') return true;
+        const el = r.target as Element;
+        // Ignore our custom properties and unrelated inline style changes such as animations.
+        return visibilityStyles(r.oldValue) !== visibilityStyles(el.getAttribute('style'));
+      }
       const nodes = [...Array.from(r.addedNodes), ...Array.from(r.removedNodes)];
       return nodes.some((n) => {
         if (n.nodeType === 1) {
@@ -443,8 +458,9 @@ export class PageTranslator {
     // Inside the block right after the run, or right after the block itself (row layouts).
     // Right after the text, before trailing icons ("Get started →" keeps its arrow last).
     const lastText = unit.nodes.findLast((n) => !unit.decor.includes(n as Element));
-    const anchor = unit.placement === 'after' ? unit.block : lastText;
-    const parent = unit.placement === 'after' ? unit.block.parentNode : unit.block;
+    const outside = this.placeAfter(unit);
+    const anchor = outside ? unit.block : lastText;
+    const parent = outside ? unit.block.parentNode : unit.block;
     if (!anchor || !parent || anchor.parentNode !== parent) return undefined;
     if (!unit.el) unit.el = this.doc.createElement(TRANSLATION_TAG);
     if (unit.el.previousSibling !== anchor || unit.el.parentNode !== parent) {
@@ -454,6 +470,14 @@ export class PageTranslator {
     unit.el.removeAttribute('title');
     unit.el.onclick = null;
     return unit.el;
+  }
+
+  private placeAfter(unit: Unit): boolean {
+    return (
+      unit.placement === 'after' &&
+      (!unit.fullBlock ||
+        this.doc.documentElement.getAttribute('data-tn-mode') !== 'translation-only')
+    );
   }
 
   private renderLoading(unit: Unit): void {
@@ -476,7 +500,8 @@ export class PageTranslator {
     }
     const el = this.ensureEl(unit);
     if (!el) return;
-    const inline = isShortSnippet(unit.text);
+    const outside = this.placeAfter(unit);
+    const inline = !outside && isShortSnippet(unit.text);
     el.className = inline ? 'tn-done tn-inline' : 'tn-done';
     el.removeAttribute('style');
     this.scheduleFitCheck(unit);
@@ -487,7 +512,7 @@ export class PageTranslator {
       plainText: unit.text,
       block: unit.block,
       marks: unit.marks,
-      wrapLink: unit.wrapLink,
+      wrapLink: unit.wrapLink === unit.block && !outside ? undefined : unit.wrapLink,
       atoms: unit.atoms,
     });
     el.replaceChildren(span);
@@ -500,9 +525,10 @@ export class PageTranslator {
     // Text that isn't laid out yet (font-size 0 until a script sizes it) has no style to copy.
     const sized = (c: CSSStyleDeclaration) => parseFloat(c.fontSize) >= 2;
     const cs = view.getComputedStyle(unit.block);
+    el.classList.toggle('tn-nowrap', cs.textOverflow === 'ellipsis' && cs.whiteSpace === 'nowrap');
     const source = textStyleSource(unit);
     let tcs = source === unit.block ? cs : view.getComputedStyle(source);
-    if (tcs !== cs && sized(tcs)) {
+    if ((tcs !== cs || outside) && sized(tcs)) {
       for (const prop of TEXT_STYLE_PROPS) el.style.setProperty(prop, tcs.getPropertyValue(prop));
     } else {
       tcs = cs;
@@ -514,6 +540,21 @@ export class PageTranslator {
       el.style.setProperty('--tn-ls', tcs.letterSpacing);
     }
     const block = unit.block as HTMLElement;
+    const parent = block.parentElement;
+    // Keep ordinary words in the intrinsic width of a flexible title. Allow extreme tokens
+    // such as URLs to wrap anywhere so they can't force a whole row off screen.
+    if (
+      !outside &&
+      parent &&
+      Number(cs.flexGrow) > 0 &&
+      cs.minWidth === 'auto' &&
+      !/\S{24}/u.test(span.textContent ?? '')
+    ) {
+      const row = view.getComputedStyle(parent);
+      if (row.display.endsWith('flex') && row.flexDirection.startsWith('row')) {
+        el.style.overflowWrap = 'break-word';
+      }
+    }
     const set = (name: string, value: string) => block.style.setProperty(name, value);
     set('--tn-m', `${cs.marginTop} ${cs.marginRight} ${cs.marginBottom} ${cs.marginLeft}`);
     set('--tn-p', `${cs.paddingTop} ${cs.paddingRight} ${cs.paddingBottom} ${cs.paddingLeft}`);
@@ -575,6 +616,14 @@ const HIDE_VARS = [
   '--tn-bfs',
 ];
 
+function visibilityStyles(style: string | null): string {
+  return (
+    (style ?? '')
+      .match(/(?:^|;)\s*(?:display|visibility|content-visibility|font-size)\s*:[^;]*/gi)
+      ?.join('') ?? ''
+  );
+}
+
 /** Undo what translation-only mode set on a block. */
 function unhide(block: Element): void {
   if (!block.hasAttribute(HIDE_ATTR)) return;
@@ -608,6 +657,7 @@ const TEXT_STYLE_PROPS = [
   'color',
   'letter-spacing',
   'line-height',
+  'text-align',
 ];
 
 /** The innermost element holding all of the unit's text, if it is inside the block. */

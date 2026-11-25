@@ -123,6 +123,20 @@ describe('collectSegments', () => {
     expect(btn[0]!.decor.map((d) => d.className)).toEqual(['icon']);
   });
 
+  it('treats a book-title link inside noindex as text that can be replaced', () => {
+    const [title] = segs(
+      '<div><noindex><a href="/book">The Story of a Library</a></noindex></div>',
+    );
+    expect(title?.wrapLink?.getAttribute('href')).toBe('/book');
+    expect(title?.fullBlock).toBe(true);
+  });
+
+  it('preserves icon-font ligatures beside a readable book title', () => {
+    const [title] = segs('<h2><i class="material-icons">auto_stories</i> Featured books</h2>');
+    expect(title?.text).toBe('Featured books');
+    expect(title?.decor.map((node) => node.textContent)).toEqual(['auto_stories']);
+  });
+
   it('marks blocks with an image inside the sentence as not text-only', () => {
     const s = segs('<p>Caption <span>with <img src="x.png"> inline</span> image</p>');
     expect(s[0]!.fullBlock).toBe(false);
@@ -235,7 +249,7 @@ describe('buttons and widget roles', () => {
     expect(s).toHaveLength(1);
     expect(s[0]!.block.localName).toBe('button');
     expect(s[0]!.placement).toBe('after');
-    expect(s[0]!.fullBlock).toBe(false);
+    expect(s[0]!.fullBlock).toBe(true);
   });
 
   it('keeps translations inside row blocks when short, column-flex, or inside a row parent', () => {

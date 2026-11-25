@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { AddressInfo } from 'node:net';
 
-export type MockMode = 'ok' | '429-twice' | '401' | 'slow' | 'cjk';
+export type MockMode = 'ok' | '429-twice' | '401' | 'slow' | 'cjk' | 'english';
 
 export interface MockServer {
   url: string;
@@ -122,6 +122,22 @@ export function fakeChinese(text: string): string {
     .join('');
 }
 
+/** Pseudo-English with word boundaries and lengths unlike the CJK source text. */
+function fakeEnglish(text: string): string {
+  const words = ['story', 'chapter', 'library', 'book', 'readers', 'reading'];
+  return text
+    .split(/(<\/?a(?: id="\d+")?>|<m id="\d+"\/>)/)
+    .map((part, i) =>
+      i % 2
+        ? part
+        : part.replace(/[^\P{L}\p{Script=Latin}]{1,3}/gu, (group) => {
+            return ` ${words[group.codePointAt(0)! % words.length]}`;
+          }),
+    )
+    .join('')
+    .replace(/(^|\n) +/g, '$1');
+}
+
 export async function startMockServer(fixturesDir: string): Promise<MockServer> {
   let mode: MockMode = 'ok';
   let rateLimitedLeft = 0;
@@ -160,7 +176,8 @@ export async function startMockServer(fixturesDir: string): Promise<MockServer> 
           rateLimitedLeft--;
           return send(429, { error: { message: 'Rate limited' } }, { 'Retry-After': '0' });
         }
-        const fake = mode === 'cjk' ? fakeChinese : fakeTranslate;
+        const fake =
+          mode === 'cjk' ? fakeChinese : mode === 'english' ? fakeEnglish : fakeTranslate;
         const segs = [...user.matchAll(/<seg id="(\d+)">([\s\S]*?)<\/seg>/g)];
         const content = segs.length
           ? segs.map((m) => `<seg id="${m[1]}">${fake(m[2]!)}</seg>`).join('\n')
